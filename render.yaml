@@ -1,0 +1,45 @@
+# Render Blueprint — Infrastructure as Code
+# https://render.com/docs/blueprint-spec
+
+services:
+  # Flask web app
+  - type: web
+    name: dynamic-audio-web
+    runtime: python
+    plan: starter
+    buildCommand: |
+      pip install -r requirements.txt
+    startCommand: gunicorn wsgi:app --workers 2 --timeout 60
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dynamic-audio-db
+          property: connectionString
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_ACCESS_KEY
+        sync: false
+      - key: S3_SECRET_KEY
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: API_KEY
+        generateValue: true
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+
+databases:
+  - name: dynamic-audio-db
+    plan: starter

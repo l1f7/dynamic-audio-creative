@@ -1,0 +1,97 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ campaign.name }} — DAC Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2>{{ campaign.name }}</h2>
+        <p class="text-muted mb-0">{{ campaign.advertiser.name }} &middot; {{ campaign.feed_type }} &middot; {{ campaign.target_city or 'No city' }}</p>
+    </div>
+    <div>
+        <a href="{{ url_for('admin.campaign_edit', campaign_id=campaign.id) }}" class="btn btn-outline-secondary">Edit</a>
+        <button class="btn btn-primary ms-2" disabled title="Coming in Phase 2">Generate Now</button>
+    </div>
+</div>
+
+<!-- Config summary -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-subtitle text-muted mb-2">Voice</h6>
+                <p class="mb-0">{{ campaign.effective_voice_name }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-subtitle text-muted mb-2">Mix</h6>
+                <p class="mb-0">Intro {{ campaign.intro_seconds }}s / Outro {{ campaign.outro_seconds }}s / Duck {{ (campaign.duck_volume * 100)|int }}%</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-subtitle text-muted mb-2">Schedule</h6>
+                <p class="mb-0">{{ campaign.cron_schedule or 'Manual only' }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if campaign.pronunciation_entries %}
+<div class="card mb-4">
+    <div class="card-header">Pronunciation Guide</div>
+    <div class="card-body">
+        {% for entry in campaign.pronunciation_entries %}
+        <span class="badge bg-light text-dark border me-1">"{{ entry.written_form }}" &rarr; "{{ entry.spoken_form }}"</span>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Runs -->
+<h4 class="mt-4 mb-3">Recent Runs</h4>
+{% if runs %}
+<table class="table table-sm">
+    <thead>
+        <tr>
+            <th>Run</th>
+            <th>Status</th>
+            <th>Triggered</th>
+            <th>Created</th>
+            <th>Script</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for run in runs %}
+        <tr>
+            <td>#{{ run.id }}</td>
+            <td>
+                {% if run.status == 'complete' %}
+                    <span class="badge badge-status-complete">{{ run.status_label }}</span>
+                {% elif run.status == 'failed' %}
+                    <span class="badge badge-status-failed">{{ run.status_label }}</span>
+                {% else %}
+                    <span class="badge badge-status-running">{{ run.status_label }}</span>
+                {% endif %}
+            </td>
+            <td>{{ run.triggered_by }}</td>
+            <td>{{ run.created_at.strftime('%Y-%m-%d %H:%M') if run.created_at else '' }}</td>
+            <td>
+                {% if run.script_text %}
+                    <span class="text-truncate d-inline-block" style="max-width: 300px;">{{ run.script_text[:80] }}...</span>
+                {% else %}
+                    —
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="text-muted">No runs yet. Click "Generate Now" to create your first ad.</p>
+{% endif %}
+{% endblock %}

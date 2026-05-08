@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment
+.env
+instance/
+*.db
+
+# Output
+output/
+weather-radio-pilot/output/
+
+# Assets (user-supplied, not committed)
+weather-radio-pilot/assets/*.mp3
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

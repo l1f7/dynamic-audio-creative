@@ -1,0 +1,65 @@
+{% extends "admin/base.html" %}
+{% block title %}Dashboard — DAC Admin{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Dashboard</h2>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">{{ advertisers|length }}</h5>
+                <p class="card-text text-muted">Active Advertisers</p>
+                <a href="{{ url_for('admin.advertiser_list') }}" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">{{ campaigns|length }}</h5>
+                <p class="card-text text-muted">Active Campaigns</p>
+                <a href="{{ url_for('admin.campaign_list') }}" class="btn btn-sm btn-outline-primary">View All</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h4 class="mt-4 mb-3">Recent Runs</h4>
+{% if recent_runs %}
+<table class="table table-sm">
+    <thead>
+        <tr>
+            <th>Run</th>
+            <th>Campaign</th>
+            <th>Status</th>
+            <th>Triggered</th>
+            <th>Created</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for run in recent_runs %}
+        <tr>
+            <td>#{{ run.id }}</td>
+            <td><a href="{{ url_for('admin.campaign_detail', campaign_id=run.campaign_id) }}">{{ run.campaign.name }}</a></td>
+            <td>
+                {% if run.status == 'complete' %}
+                    <span class="badge badge-status-complete">{{ run.status_label }}</span>
+                {% elif run.status == 'failed' %}
+                    <span class="badge badge-status-failed">{{ run.status_label }}</span>
+                {% elif run.is_terminal %}
+                    <span class="badge badge-status-pending">{{ run.status_label }}</span>
+                {% else %}
+                    <span class="badge badge-status-running">{{ run.status_label }}</span>
+                {% endif %}
+            </td>
+            <td>{{ run.triggered_by }}</td>
+            <td>{{ run.created_at.strftime('%Y-%m-%d %H:%M') if run.created_at else '' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="text-muted">No runs yet. Create a campaign and generate your first ad.</p>
+{% endif %}
+{% endblock %}

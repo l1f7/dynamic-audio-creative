@@ -1,0 +1,192 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ 'Edit' if editing else 'New' }} Campaign — DAC Admin{% endblock %}
+
+{% block content %}
+<h2>{{ 'Edit' if editing else 'New' }} Campaign</h2>
+
+<form method="POST" class="mt-3" style="max-width: 700px;">
+    {{ form.hidden_tag() }}
+
+    <!-- Basics -->
+    <div class="card mb-3">
+        <div class="card-header">Basics</div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">Campaign Name</label>
+                {{ form.name(class="form-control") }}
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Advertiser</label>
+                    {{ form.advertiser_id(class="form-select") }}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Target City</label>
+                    {{ form.target_city(class="form-control", placeholder="e.g. Vancouver, BC") }}
+                </div>
+            </div>
+            <div class="form-check mb-3">
+                {{ form.is_active(class="form-check-input") }}
+                <label class="form-check-label">Active</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Feed -->
+    <div class="card mb-3">
+        <div class="card-header">Data Feed</div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Feed Type</label>
+                    {{ form.feed_type(class="form-select") }}
+                </div>
+                <div class="col-md-8 mb-3">
+                    <label class="form-label">Feed URL</label>
+                    {{ form.feed_url(class="form-control", placeholder="https://...") }}
+                    <small class="text-muted">Leave blank for default feed (weather: EC Vancouver, concerts: AdmitOne Vancouver)</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Voice -->
+    <div class="card mb-3">
+        <div class="card-header">Voice</div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Preset Voice</label>
+                    {{ form.voice_preset(class="form-select") }}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Custom Voice ID</label>
+                    {{ form.voice_custom_id(class="form-control", placeholder="ElevenLabs voice ID (overrides preset)") }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mix Settings -->
+    <div class="card mb-3">
+        <div class="card-header">Mix Settings</div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Intro (sec)</label>
+                    {{ form.intro_seconds(class="form-control", step="0.5") }}
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Outro (sec)</label>
+                    {{ form.outro_seconds(class="form-control", step="0.5") }}
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Duck Volume</label>
+                    {{ form.duck_volume(class="form-control", step="0.05") }}
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">Duck Fade (sec)</label>
+                    {{ form.duck_fade(class="form-control", step="0.1") }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pronunciation Guide -->
+    <div class="card mb-3">
+        <div class="card-header">Pronunciation Guide</div>
+        <div class="card-body">
+            <p class="text-muted small">Map written words to how they should be spoken by TTS.</p>
+            <div id="pronunciation-rows">
+                {% if editing and campaign and campaign.pronunciation_entries %}
+                    {% for entry in campaign.pronunciation_entries %}
+                    <div class="row mb-2 pron-row">
+                        <div class="col-md-5">
+                            <input type="text" name="pron_written_{{ loop.index0 }}" class="form-control form-control-sm" placeholder="Written form (e.g. MRG)" value="{{ entry.written_form }}">
+                        </div>
+                        <div class="col-md-5">
+                            <input type="text" name="pron_spoken_{{ loop.index0 }}" class="form-control form-control-sm" placeholder="Spoken form (e.g. M-R-G)" value="{{ entry.spoken_form }}">
+                        </div>
+                        <div class="col-md-2">
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.pron-row').remove()">Remove</button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="row mb-2 pron-row">
+                        <div class="col-md-5">
+                            <input type="text" name="pron_written_0" class="form-control form-control-sm" placeholder="Written form (e.g. MRG)">
+                        </div>
+                        <div class="col-md-5">
+                            <input type="text" name="pron_spoken_0" class="form-control form-control-sm" placeholder="Spoken form (e.g. M-R-G)">
+                        </div>
+                        <div class="col-md-2">
+                            <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.pron-row').remove()">Remove</button>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="add-pron-row">+ Add Row</button>
+        </div>
+    </div>
+
+    <!-- Script -->
+    <div class="card mb-3">
+        <div class="card-header">Script Settings</div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Target Length (seconds)</label>
+                    {{ form.target_seconds(class="form-control") }}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Target Words</label>
+                    {{ form.target_words(class="form-control") }}
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Custom Prompt Template</label>
+                {{ form.prompt_template(class="form-control", rows=6, placeholder="Leave blank to use the default template for this feed type. Use {placeholders} for data fields.") }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Schedule -->
+    <div class="card mb-3">
+        <div class="card-header">Schedule</div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">Cron Schedule</label>
+                {{ form.cron_schedule(class="form-control", placeholder="e.g. 0 6 * * * (daily at 6am) — leave blank for manual only") }}
+                <small class="text-muted">Standard cron syntax. Leave blank to generate ads manually.</small>
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">{{ 'Update' if editing else 'Create' }} Campaign</button>
+    <a href="{{ url_for('admin.campaign_list') }}" class="btn btn-outline-secondary ms-2">Cancel</a>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('add-pron-row').addEventListener('click', function() {
+    const container = document.getElementById('pronunciation-rows');
+    const idx = container.querySelectorAll('.pron-row').length;
+    const row = document.createElement('div');
+    row.className = 'row mb-2 pron-row';
+    row.innerHTML = `
+        <div class="col-md-5">
+            <input type="text" name="pron_written_${idx}" class="form-control form-control-sm" placeholder="Written form">
+        </div>
+        <div class="col-md-5">
+            <input type="text" name="pron_spoken_${idx}" class="form-control form-control-sm" placeholder="Spoken form">
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.pron-row').remove()">Remove</button>
+        </div>
+    `;
+    container.appendChild(row);
+});
+</script>
+{% endblock %}
