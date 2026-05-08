@@ -1,0 +1,4 @@
+anthropic
+elevenlabs
+python-dotenv
+requests
