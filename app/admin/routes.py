@@ -1,15 +1,52 @@
 """Admin blueprint routes — CRUD for advertisers and campaigns."""
 
+import logging
 import os
+from datetime import datetime, timezone
 
-from flask import flash, redirect, render_template, request, send_file, url_for
+from flask import abort, current_app, flash, redirect, render_template, request, send_file, url_for
+from werkzeug.utils import secure_filename
 from flask_login import current_user, login_required, login_user, logout_user
 
 from app.admin import admin_bp
-from app.admin.auth import AdminUser
-from app.admin.forms import AdvertiserForm, CampaignForm, LoginForm
+from app.admin.auth import (
+    authenticate_bootstrap_user,
+    authenticate_database_user,
+)
+from app.admin.forms import (
+    AdminUserCreateForm,
+    AdminUserEditForm,
+    AdminUserResetPasswordForm,
+    AdvertiserForm,
+    CampaignForm,
+    ChangeOwnPasswordForm,
+    LoginForm,
+    SimpleActionForm,
+)
 from app.extensions import db
-from app.models import AdRun, Advertiser, Campaign, PronunciationEntry
+from app.models import AdRun, AdminUser, Advertiser, Campaign, PronunciationEntry
+
+
+PASSWORD_CHANGE_ENDPOINT = "admin.account_password"
+MUST_CHANGE_ALLOWED_ENDPOINTS = {
+    "admin.account_password",
+    "admin.logout",
+}
+
+
+@admin_bp.before_request
+def enforce_password_change():
+    if not current_user.is_authenticated or getattr(current_user, "is_bootstrap", False):
+        return None
+
+    if request.endpoint in MUST_CHANGE_ALLOWED_ENDPOINTS:
+        return None
+
+    if getattr(current_user, "must_change_password", False):
+        flash("Change your password before continuing.", "warning")
+        return redirect(url_for(PASSWORD_CHANGE_ENDPOINT))
+
+    return None
 
 
 # ---- Auth ----
@@ -17,13 +54,24 @@ from app.models import AdRun, Advertiser, Campaign, PronunciationEntry
 @admin_bp.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
+        if getattr(current_user, "must_change_password", False):
+            return redirect(url_for(PASSWORD_CHANGE_ENDPOINT))
         return redirect(url_for("admin.dashboard"))
 
     form = LoginForm()
     if form.validate_on_submit():
-        if AdminUser.check_credentials(form.username.data, form.password.data):
-            login_user(AdminUser())
+        user = authenticate_database_user(form.email.data, form.password.data)
+        if user is None:
+            user = authenticate_bootstrap_user(form.email.data, form.password.data)
+
+        if user is not None:
+            login_user(user)
+            if isinstance(user, AdminUser):
+                user.last_login_at = datetime.now(timezone.utc)
+                db.session.commit()
             next_page = request.args.get("next")
+            if isinstance(user, AdminUser) and user.must_change_password:
+                return redirect(url_for(PASSWORD_CHANGE_ENDPOINT))
             return redirect(next_page or url_for("admin.dashboard"))
         flash("Invalid credentials.", "danger")
 
@@ -35,6 +83,27 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for("admin.login"))
+
+
+@admin_bp.route("/account/password", methods=["GET", "POST"])
+@login_required
+def account_password():
+    if getattr(current_user, "is_bootstrap", False):
+        flash("Bootstrap admin password is managed via environment variables.", "info")
+        return redirect(url_for("admin.dashboard"))
+
+    form = ChangeOwnPasswordForm()
+    if form.validate_on_submit():
+        if not current_user.check_password(form.current_password.data):
+            form.current_password.errors.append("Current password is incorrect.")
+        else:
+            current_user.set_password(form.new_password.data)
+            current_user.must_change_password = False
+            db.session.commit()
+            flash("Password updated.", "success")
+            return redirect(url_for("admin.dashboard"))
+
+    return render_template("admin/account_password.html", form=form)
 
 
 # ---- Dashboard ----
@@ -51,6 +120,118 @@ def dashboard():
         campaigns=campaigns,
         recent_runs=recent_runs,
     )
+
+
+# ---- Admin Users ----
+
+@admin_bp.route("/users")
+@login_required
+def user_list():
+    users = AdminUser.query.order_by(AdminUser.email).all()
+    action_form = SimpleActionForm()
+    return render_template("admin/user_list.html", users=users, action_form=action_form)
+
+
+@admin_bp.route("/users/new", methods=["GET", "POST"])
+@login_required
+def user_new():
+    form = AdminUserCreateForm()
+    if form.validate_on_submit():
+        user = AdminUser(
+            email=form.email.data,
+            full_name=form.full_name.data or None,
+            is_active=form.is_active.data,
+            must_change_password=True,
+            created_by_user_id=_current_db_admin_id(),
+        )
+        user.set_password(form.temporary_password.data)
+        db.session.add(user)
+        db.session.commit()
+        flash(f"User '{user.email}' created.", "success")
+        return redirect(url_for("admin.user_list"))
+
+    return render_template(
+        "admin/user_form.html",
+        form=form,
+        editing=False,
+        user=None,
+        reset_form=None,
+    )
+
+
+@admin_bp.route("/users/<int:user_id>/edit", methods=["GET", "POST"])
+@login_required
+def user_edit(user_id):
+    user = AdminUser.query.get_or_404(user_id)
+    form = AdminUserEditForm(original_user=user, obj=user)
+    reset_form = AdminUserResetPasswordForm()
+
+    if form.validate_on_submit():
+        if user.is_active and not form.is_active.data and _is_last_active_db_user(user):
+            flash("You cannot deactivate the last active admin user.", "danger")
+        else:
+            user.email = form.email.data
+            user.full_name = form.full_name.data or None
+            user.is_active = form.is_active.data
+            db.session.commit()
+            flash(f"User '{user.email}' updated.", "success")
+            if _is_current_db_user(user) and not user.is_active:
+                logout_user()
+                flash("Your account has been deactivated.", "warning")
+                return redirect(url_for("admin.login"))
+            return redirect(url_for("admin.user_edit", user_id=user.id))
+
+    return render_template(
+        "admin/user_form.html",
+        form=form,
+        editing=True,
+        user=user,
+        reset_form=reset_form,
+    )
+
+
+@admin_bp.route("/users/<int:user_id>/reset-password", methods=["POST"])
+@login_required
+def user_reset_password(user_id):
+    user = AdminUser.query.get_or_404(user_id)
+    form = AdminUserResetPasswordForm()
+    if form.validate_on_submit():
+        user.set_password(form.temporary_password.data)
+        user.must_change_password = True
+        db.session.commit()
+        flash(f"Password reset for '{user.email}'.", "success")
+    else:
+        for errors in form.errors.values():
+            for error in errors:
+                flash(error, "danger")
+    return redirect(url_for("admin.user_edit", user_id=user.id) + "#password-reset")
+
+
+@admin_bp.route("/users/<int:user_id>/toggle-active", methods=["POST"])
+@login_required
+def user_toggle_active(user_id):
+    user = AdminUser.query.get_or_404(user_id)
+    form = SimpleActionForm()
+    if not form.validate_on_submit():
+        abort(400)
+
+    if user.is_active and _is_last_active_db_user(user):
+        flash("You cannot deactivate the last active admin user.", "danger")
+        return redirect(url_for("admin.user_list"))
+
+    user.is_active = not user.is_active
+    db.session.commit()
+
+    if not user.is_active and _is_current_db_user(user):
+        logout_user()
+        flash("Your account has been deactivated.", "warning")
+        return redirect(url_for("admin.login"))
+
+    flash(
+        f"User '{user.email}' {'activated' if user.is_active else 'deactivated'}.",
+        "success",
+    )
+    return redirect(url_for("admin.user_list"))
 
 
 # ---- Advertisers ----
@@ -137,6 +318,9 @@ def campaign_new():
         )
         db.session.add(campaign)
         db.session.commit()
+
+        # Upload music bed if provided
+        _handle_music_bed_upload(campaign, form)
 
         # Save pronunciation entries from form
         _save_pronunciation_entries(campaign, request.form)
@@ -247,6 +431,25 @@ def run_download(run_id):
     return redirect(url_for("admin.run_detail", run_id=run_id))
 
 
+@admin_bp.route("/campaigns/<int:campaign_id>/music-bed")
+@login_required
+def campaign_music_bed(campaign_id):
+    """Serve the campaign's music bed for playback."""
+    campaign = Campaign.query.get_or_404(campaign_id)
+
+    if campaign.music_bed_s3_key and current_app.config.get("S3_ENDPOINT_URL"):
+        from app.storage import s3
+        url = s3.generate_signed_url(campaign.music_bed_s3_key)
+        return redirect(url)
+
+    local_path = campaign.music_bed_filename
+    if local_path and os.path.isfile(local_path):
+        return send_file(local_path, mimetype="audio/mpeg")
+
+    flash("No music bed found.", "warning")
+    return redirect(url_for("admin.campaign_edit", campaign_id=campaign_id))
+
+
 @admin_bp.route("/campaigns/<int:campaign_id>/edit", methods=["GET", "POST"])
 @login_required
 def campaign_edit(campaign_id):
@@ -257,7 +460,16 @@ def campaign_edit(campaign_id):
     ]
 
     if form.validate_on_submit():
+        # Preserve music bed fields — populate_obj would overwrite them
+        saved_s3_key = campaign.music_bed_s3_key
+        saved_filename = campaign.music_bed_filename
+
         form.populate_obj(campaign)
+
+        # Restore music bed fields (handled separately via _handle_music_bed_upload)
+        campaign.music_bed_s3_key = saved_s3_key
+        campaign.music_bed_filename = saved_filename
+
         # Clear empty strings to None
         if not campaign.feed_url:
             campaign.feed_url = None
@@ -271,6 +483,9 @@ def campaign_edit(campaign_id):
             campaign.cron_schedule = None
 
         db.session.commit()
+
+        # Handle music bed upload / removal
+        _handle_music_bed_upload(campaign, form)
 
         # Update pronunciation entries
         _save_pronunciation_entries(campaign, request.form)
@@ -329,5 +544,96 @@ def _save_pronunciation_entries(campaign, form_data):
             )
             db.session.add(entry)
         i += 1
+
+    db.session.commit()
+
+
+def _current_db_admin_id():
+    if current_user.is_authenticated and not getattr(current_user, "is_bootstrap", False):
+        return current_user.id
+    return None
+
+
+def _is_last_active_db_user(user):
+    active_count = AdminUser.query.filter_by(is_active=True).count()
+    return user.is_active and active_count <= 1
+
+
+def _is_current_db_user(user):
+    return (
+        current_user.is_authenticated
+        and not getattr(current_user, "is_bootstrap", False)
+        and current_user.id == user.id
+    )
+
+
+logger = logging.getLogger(__name__)
+
+ALLOWED_MUSIC_BED_EXTENSIONS = {"mp3", "wav", "m4a"}
+
+
+def _handle_music_bed_upload(campaign, form):
+    """Process the music bed file upload and removal for a campaign.
+
+    Handles three cases:
+    1. User checked "remove" — delete from S3, clear fields.
+    2. User uploaded a new file — upload to S3, set fields (delete old first).
+    3. Neither — leave existing music bed unchanged.
+    """
+    # Case 1: Remove existing music bed
+    if form.remove_music_bed.data and not form.music_bed_file.data:
+        if campaign.music_bed_s3_key and current_app.config.get("S3_ENDPOINT_URL"):
+            try:
+                from app.storage import s3
+                s3.delete(campaign.music_bed_s3_key)
+            except Exception:
+                logger.warning("Failed to delete old music bed from S3: %s", campaign.music_bed_s3_key)
+        campaign.music_bed_s3_key = None
+        campaign.music_bed_filename = None
+        db.session.commit()
+        return
+
+    # Case 2: New file uploaded
+    file = form.music_bed_file.data
+    if not file:
+        return
+
+    filename = secure_filename(file.filename)
+    if not filename:
+        return
+
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in ALLOWED_MUSIC_BED_EXTENSIONS:
+        return
+
+    file_bytes = file.read()
+
+    content_types = {"mp3": "audio/mpeg", "wav": "audio/wav", "m4a": "audio/mp4"}
+    content_type = content_types.get(ext, "audio/mpeg")
+
+    s3_key = f"music-beds/{campaign.id}/{filename}"
+
+    if current_app.config.get("S3_ENDPOINT_URL"):
+        # Delete old music bed from S3 if replacing
+        if campaign.music_bed_s3_key and campaign.music_bed_s3_key != s3_key:
+            try:
+                from app.storage import s3
+                s3.delete(campaign.music_bed_s3_key)
+            except Exception:
+                logger.warning("Failed to delete old music bed: %s", campaign.music_bed_s3_key)
+
+        from app.storage import s3
+        s3.upload(s3_key, file_bytes, content_type=content_type)
+        campaign.music_bed_s3_key = s3_key
+        campaign.music_bed_filename = filename
+    else:
+        # Local fallback for development
+        local_dir = os.path.join(current_app.instance_path, "music-beds", str(campaign.id))
+        os.makedirs(local_dir, exist_ok=True)
+        local_path = os.path.join(local_dir, filename)
+        with open(local_path, "wb") as f:
+            f.write(file_bytes)
+        campaign.music_bed_filename = local_path
+        campaign.music_bed_s3_key = None
 
     db.session.commit()

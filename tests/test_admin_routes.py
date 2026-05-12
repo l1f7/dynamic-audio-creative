@@ -1,7 +1,9 @@
 """Tests for admin blueprint routes."""
 
-from app.models import Advertiser, Campaign, PronunciationEntry
+from werkzeug.security import check_password_hash, generate_password_hash
+
 from app.extensions import db
+from app.models import AdminUser, Advertiser, Campaign, PronunciationEntry
 
 
 class TestAuth:
@@ -18,7 +20,25 @@ class TestAuth:
     def test_login_success(self, client, app):
         resp = client.post(
             "/admin/login",
-            data={"username": "admin", "password": "changeme"},
+            data={"email": "admin", "password": "changeme"},
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+        assert b"Dashboard" in resp.data
+
+    def test_database_user_login_success(self, client):
+        user = AdminUser(
+            email="person@example.com",
+            password_hash=generate_password_hash("supersecure123"),
+            is_active=True,
+            must_change_password=False,
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        resp = client.post(
+            "/admin/login",
+            data={"email": "PERSON@example.com", "password": "supersecure123"},
             follow_redirects=True,
         )
         assert resp.status_code == 200
@@ -27,10 +47,45 @@ class TestAuth:
     def test_login_bad_password(self, client):
         resp = client.post(
             "/admin/login",
-            data={"username": "admin", "password": "wrong"},
+            data={"email": "admin", "password": "wrong"},
             follow_redirects=True,
         )
         assert b"Invalid credentials" in resp.data
+
+    def test_inactive_user_cannot_login(self, client):
+        user = AdminUser(
+            email="inactive@example.com",
+            password_hash=generate_password_hash("supersecure123"),
+            is_active=False,
+            must_change_password=False,
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        resp = client.post(
+            "/admin/login",
+            data={"email": "inactive@example.com", "password": "supersecure123"},
+            follow_redirects=True,
+        )
+        assert b"Invalid credentials" in resp.data
+
+    def test_must_change_password_redirects_after_login(self, client):
+        user = AdminUser(
+            email="forced@example.com",
+            password_hash=generate_password_hash("supersecure123"),
+            is_active=True,
+            must_change_password=True,
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        resp = client.post(
+            "/admin/login",
+            data={"email": "forced@example.com", "password": "supersecure123"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        assert "/admin/account/password" in resp.headers["Location"]
 
 
 class TestDashboard:
@@ -38,6 +93,24 @@ class TestDashboard:
         resp = authenticated_client.get("/admin/")
         assert resp.status_code == 200
         assert b"Dashboard" in resp.data
+
+    def test_must_change_password_blocks_dashboard(self, client):
+        user = AdminUser(
+            email="forced@example.com",
+            password_hash=generate_password_hash("supersecure123"),
+            is_active=True,
+            must_change_password=True,
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        with client.session_transaction() as sess:
+            sess["_user_id"] = f"user:{user.id}"
+            sess["_fresh"] = True
+
+        resp = client.get("/admin/", follow_redirects=False)
+        assert resp.status_code == 302
+        assert "/admin/account/password" in resp.headers["Location"]
 
 
 class TestAdvertiserCRUD:
@@ -193,3 +266,150 @@ class TestCampaignCRUD:
         resp = authenticated_client.get(f"/admin/campaigns/{c.id}")
         assert resp.status_code == 200
         assert b"Detail Test" in resp.data
+
+
+class TestAdminUsers:
+    def test_user_list_excludes_bootstrap_identity(self, authenticated_client):
+        resp = authenticated_client.get("/admin/users")
+        assert resp.status_code == 200
+        assert b"admin@example.com" in resp.data
+        assert b"Bootstrap Admin" not in resp.data
+
+    def test_create_user(self, authenticated_client):
+        resp = authenticated_client.post(
+            "/admin/users/new",
+            data={
+                "email": "newuser@example.com",
+                "full_name": "New User",
+                "temporary_password": "temp-password1",
+                "is_active": "y",
+            },
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+        user = AdminUser.query.filter_by(email="newuser@example.com").first()
+        assert user is not None
+        assert user.must_change_password is True
+        assert check_password_hash(user.password_hash, "temp-password1")
+
+    def test_duplicate_user_email_rejected(self, authenticated_client):
+        db.session.add(
+            AdminUser(
+                email="duplicate@example.com",
+                password_hash=generate_password_hash("temp-password1"),
+                is_active=True,
+            )
+        )
+        db.session.commit()
+
+        resp = authenticated_client.post(
+            "/admin/users/new",
+            data={
+                "email": "duplicate@example.com",
+                "full_name": "Duplicate",
+                "temporary_password": "temp-password2",
+                "is_active": "y",
+            },
+            follow_redirects=True,
+        )
+        assert b"already exists" in resp.data
+
+    def test_edit_user(self, authenticated_client):
+        user = AdminUser(
+            email="editme@example.com",
+            full_name="Old Name",
+            password_hash=generate_password_hash("temp-password1"),
+            is_active=True,
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        resp = authenticated_client.post(
+            f"/admin/users/{user.id}/edit",
+            data={
+                "email": "updated@example.com",
+                "full_name": "Updated Name",
+                "is_active": "y",
+            },
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+        updated = AdminUser.query.get(user.id)
+        assert updated.email == "updated@example.com"
+        assert updated.full_name == "Updated Name"
+
+    def test_reset_password(self, authenticated_client):
+        user = AdminUser(
+            email="reset@example.com",
+            password_hash=generate_password_hash("old-password1"),
+            is_active=True,
+            must_change_password=False,
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        resp = authenticated_client.post(
+            f"/admin/users/{user.id}/reset-password",
+            data={"temporary_password": "new-password1"},
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+        updated = AdminUser.query.get(user.id)
+        assert updated.must_change_password is True
+        assert check_password_hash(updated.password_hash, "new-password1")
+
+    def test_toggle_active_blocks_last_admin(self, authenticated_client):
+        user = AdminUser.query.filter_by(email="admin@example.com").first()
+        resp = authenticated_client.post(
+            f"/admin/users/{user.id}/toggle-active",
+            data={"submit": "1"},
+            follow_redirects=True,
+        )
+        assert b"last active admin user" in resp.data
+        assert AdminUser.query.get(user.id).is_active is True
+
+    def test_toggle_active_deactivates_user(self, authenticated_client):
+        user = AdminUser(
+            email="other@example.com",
+            password_hash=generate_password_hash("temp-password1"),
+            is_active=True,
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        resp = authenticated_client.post(
+            f"/admin/users/{user.id}/toggle-active",
+            data={"submit": "1"},
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+        assert AdminUser.query.get(user.id).is_active is False
+
+
+class TestOwnPassword:
+    def test_change_own_password(self, authenticated_client):
+        resp = authenticated_client.post(
+            "/admin/account/password",
+            data={
+                "current_password": "changeme12345",
+                "new_password": "my-new-password1",
+                "confirm_new_password": "my-new-password1",
+            },
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+        user = AdminUser.query.filter_by(email="admin@example.com").first()
+        assert user.must_change_password is False
+        assert check_password_hash(user.password_hash, "my-new-password1")
+
+    def test_change_own_password_rejects_wrong_current(self, authenticated_client):
+        resp = authenticated_client.post(
+            "/admin/account/password",
+            data={
+                "current_password": "wrong-password",
+                "new_password": "my-new-password1",
+                "confirm_new_password": "my-new-password1",
+            },
+            follow_redirects=True,
+        )
+        assert b"Current password is incorrect." in resp.data

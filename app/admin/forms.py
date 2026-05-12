@@ -1,6 +1,7 @@
 """WTForms for the admin UI."""
 
 from flask_wtf import FlaskForm
+from flask_wtf.file import FileAllowed, FileField
 from wtforms import (
     BooleanField,
     FloatField,
@@ -8,15 +9,24 @@ from wtforms import (
     PasswordField,
     SelectField,
     StringField,
+    SubmitField,
     TextAreaField,
 )
-from wtforms.validators import DataRequired, Optional, NumberRange
+from wtforms.validators import DataRequired, EqualTo, Length, NumberRange, Optional, Regexp, ValidationError
 
+from app.models import AdminUser
 from app.models.campaign import PRESET_VOICES
+
+PASSWORD_MIN_LENGTH = 12
+EMAIL_REGEX = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+
+
+def _normalize_email(value):
+    return AdminUser.normalize_email(value)
 
 
 class LoginForm(FlaskForm):
-    username = StringField("Username", validators=[DataRequired()])
+    email = StringField("Email", validators=[DataRequired()])
     password = PasswordField("Password", validators=[DataRequired()])
 
 
@@ -75,7 +85,13 @@ class CampaignForm(FlaskForm):
     )
 
     # Music bed
-    music_bed_filename = StringField("Music Bed (local file path)", validators=[Optional()])
+    music_bed_file = FileField(
+        "Music Bed",
+        validators=[
+            FileAllowed(["mp3", "wav", "m4a"], "Audio files only (MP3, WAV, M4A)."),
+        ],
+    )
+    remove_music_bed = BooleanField("Remove music bed")
 
     # Script
     prompt_template = TextAreaField("Prompt Template (leave blank for default)", validators=[Optional()])
@@ -86,3 +102,72 @@ class CampaignForm(FlaskForm):
     cron_schedule = StringField(
         "Cron Schedule (leave blank for manual only)", validators=[Optional()]
     )
+
+
+class AdminUserCreateForm(FlaskForm):
+    email = StringField(
+        "Email",
+        validators=[DataRequired(), Regexp(EMAIL_REGEX, message="Enter a valid email address.")],
+    )
+    full_name = StringField("Full Name", validators=[Optional()])
+    temporary_password = PasswordField(
+        "Temporary Password",
+        validators=[DataRequired(), Length(min=PASSWORD_MIN_LENGTH)],
+    )
+    is_active = BooleanField("Active", default=True)
+    submit = SubmitField("Create User")
+
+    def validate_email(self, field):
+        normalized_email = _normalize_email(field.data)
+        if AdminUser.query.filter_by(email=normalized_email).first():
+            raise ValidationError("A user with that email already exists.")
+
+
+class AdminUserEditForm(FlaskForm):
+    email = StringField(
+        "Email",
+        validators=[DataRequired(), Regexp(EMAIL_REGEX, message="Enter a valid email address.")],
+    )
+    full_name = StringField("Full Name", validators=[Optional()])
+    is_active = BooleanField("Active", default=True)
+    submit = SubmitField("Save Changes")
+
+    def __init__(self, original_user=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.original_user = original_user
+
+    def validate_email(self, field):
+        normalized_email = _normalize_email(field.data)
+        query = AdminUser.query.filter_by(email=normalized_email)
+        if self.original_user is not None:
+            query = query.filter(AdminUser.id != self.original_user.id)
+        if query.first():
+            raise ValidationError("A user with that email already exists.")
+
+
+class AdminUserResetPasswordForm(FlaskForm):
+    temporary_password = PasswordField(
+        "Temporary Password",
+        validators=[DataRequired(), Length(min=PASSWORD_MIN_LENGTH)],
+    )
+    submit = SubmitField("Reset Password")
+
+
+class ChangeOwnPasswordForm(FlaskForm):
+    current_password = PasswordField("Current Password", validators=[DataRequired()])
+    new_password = PasswordField(
+        "New Password",
+        validators=[
+            DataRequired(),
+            Length(min=PASSWORD_MIN_LENGTH),
+            EqualTo("confirm_new_password", message="Passwords must match."),
+        ],
+    )
+    confirm_new_password = PasswordField(
+        "Confirm New Password", validators=[DataRequired()]
+    )
+    submit = SubmitField("Change Password")
+
+
+class SimpleActionForm(FlaskForm):
+    submit = SubmitField("Submit")

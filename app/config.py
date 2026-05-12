@@ -11,6 +11,7 @@ class BaseConfig:
     """Shared configuration."""
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    MAX_CONTENT_LENGTH = 20 * 1024 * 1024  # 20 MB upload limit
 
     # API keys
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")

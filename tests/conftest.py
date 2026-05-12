@@ -1,9 +1,11 @@
 """Shared test fixtures."""
 
 import pytest
+from werkzeug.security import generate_password_hash
 
 from app import create_app
 from app.extensions import db as _db
+from app.models import AdminUser
 
 
 @pytest.fixture(scope="session")
@@ -34,6 +36,16 @@ def client(app, db):
 @pytest.fixture(scope="function")
 def authenticated_client(client, app):
     """Test client that's already logged in."""
+    user = AdminUser(
+        email="admin@example.com",
+        full_name="Admin User",
+        password_hash=generate_password_hash("changeme12345"),
+        is_active=True,
+        must_change_password=False,
+    )
+    _db.session.add(user)
+    _db.session.commit()
     with client.session_transaction() as sess:
-        sess["_user_id"] = "admin"
+        sess["_user_id"] = f"user:{user.id}"
+        sess["_fresh"] = True
     yield client

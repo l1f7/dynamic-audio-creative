@@ -4,7 +4,7 @@
 {% block content %}
 <h2>{{ 'Edit' if editing else 'New' }} Campaign</h2>
 
-<form method="POST" class="mt-3" style="max-width: 700px;">
+<form method="POST" enctype="multipart/form-data" class="mt-3" style="max-width: 700px;">
     {{ form.hidden_tag() }}
 
     <!-- Basics -->
@@ -105,8 +105,25 @@
             </div>
             <div class="mb-3">
                 <label class="form-label">Music Bed</label>
-                {{ form.music_bed_filename(class="form-control", placeholder="/full/path/to/music_bed.mp3") }}
-                <small class="text-muted">Local file path for development. S3 upload coming soon.</small>
+                {% if editing and campaign and (campaign.music_bed_s3_key or campaign.music_bed_filename) %}
+                <div class="mb-2 p-2 bg-light rounded border">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <span class="text-success">
+                            <strong>Current:</strong> {{ campaign.music_bed_filename or campaign.music_bed_s3_key }}
+                        </span>
+                    </div>
+                    <audio controls preload="none" class="w-100 mt-1" style="height: 32px;">
+                        <source src="{{ url_for('admin.campaign_music_bed', campaign_id=campaign.id) }}" type="audio/mpeg">
+                    </audio>
+                    <div class="form-check mt-1">
+                        {{ form.remove_music_bed(class="form-check-input") }}
+                        <label class="form-check-label text-danger small">Remove music bed</label>
+                    </div>
+                </div>
+                <label class="form-label small text-muted">Upload replacement:</label>
+                {% endif %}
+                {{ form.music_bed_file(class="form-control", accept=".mp3,.wav,.m4a") }}
+                <small class="text-muted">MP3, WAV, or M4A. Max 20 MB.</small>
             </div>
         </div>
     </div>

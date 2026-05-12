@@ -22,11 +22,19 @@
         <!-- Sidebar -->
         <nav class="col-md-2 sidebar p-3">
             <h5 class="text-white mb-4">DAC Admin</h5>
+            {% if current_user.is_authenticated %}
+            <div class="text-secondary small mb-3">
+                Signed in as<br>
+                <span class="text-white">{{ current_user.display_name if current_user.display_name else 'Bootstrap Admin' }}</span>
+            </div>
+            {% endif %}
             <h6 class="mt-3">Manage</h6>
             <a href="{{ url_for('admin.dashboard') }}" class="{% if request.endpoint == 'admin.dashboard' %}active{% endif %}">Dashboard</a>
             <a href="{{ url_for('admin.advertiser_list') }}" class="{% if 'advertiser' in request.endpoint %}active{% endif %}">Advertisers</a>
             <a href="{{ url_for('admin.campaign_list') }}" class="{% if 'campaign' in request.endpoint %}active{% endif %}">Campaigns</a>
+            <a href="{{ url_for('admin.user_list') }}" class="{% if request.endpoint and request.endpoint.startswith('admin.user_') %}active{% endif %}">Users</a>
             <hr class="border-secondary">
+            <a href="{{ url_for('admin.account_password') }}" class="{% if request.endpoint == 'admin.account_password' %}active{% endif %}">Change Password</a>
             <a href="{{ url_for('admin.logout') }}" class="text-secondary">Logout</a>
         </nav>
 
