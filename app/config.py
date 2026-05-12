@@ -60,7 +60,15 @@ class DevelopmentConfig(BaseConfig):
 class ProductionConfig(BaseConfig):
     """Production configuration."""
     DEBUG = False
-    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL")
+
+    @staticmethod
+    def _fix_database_url(url):
+        """Render provides postgres:// but SQLAlchemy 2.0 requires postgresql://."""
+        if url and url.startswith("postgres://"):
+            return url.replace("postgres://", "postgresql://", 1)
+        return url
+
+    SQLALCHEMY_DATABASE_URI = _fix_database_url.__func__(os.environ.get("DATABASE_URL"))
 
 
 class TestingConfig(BaseConfig):

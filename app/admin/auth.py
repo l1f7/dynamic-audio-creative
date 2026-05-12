@@ -5,7 +5,7 @@ from flask_login import UserMixin
 
 from app.models import AdminUser
 
-from app.extensions import login_manager
+from app.extensions import db, login_manager
 
 
 class BootstrapAdminUser(UserMixin):
@@ -64,7 +64,7 @@ def load_user(user_id):
         raw_id = user_id.split(":", 1)[1]
         if not raw_id.isdigit():
             return None
-        user = AdminUser.query.session.get(AdminUser, int(raw_id))
+        user = db.session.get(AdminUser, int(raw_id))
         if user and user.is_active:
             return user
     return None
