@@ -1,11 +1,16 @@
 """Authentication helpers for the admin UI."""
 
+import logging
+
 from flask import current_app
 from flask_login import UserMixin
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from app.models import AdminUser
 
 from app.extensions import db, login_manager
+
+logger = logging.getLogger(__name__)
 
 
 class BootstrapAdminUser(UserMixin):
@@ -35,7 +40,12 @@ def authenticate_database_user(email, password):
     if not normalized_email or not password:
         return None
 
-    user = AdminUser.query.filter_by(email=normalized_email).first()
+    try:
+        user = AdminUser.query.filter_by(email=normalized_email).first()
+    except (OperationalError, ProgrammingError):
+        logger.warning("admin_users table not available — skipping database auth")
+        db.session.rollback()
+        return None
     if not user or not user.is_active:
         return None
     if not user.check_password(password):
@@ -64,7 +74,12 @@ def load_user(user_id):
         raw_id = user_id.split(":", 1)[1]
         if not raw_id.isdigit():
             return None
-        user = db.session.get(AdminUser, int(raw_id))
+        try:
+            user = db.session.get(AdminUser, int(raw_id))
+        except (OperationalError, ProgrammingError):
+            logger.warning("admin_users table not available — skipping user load")
+            db.session.rollback()
+            return None
         if user and user.is_active:
             return user
     return None
