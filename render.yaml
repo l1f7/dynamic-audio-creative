@@ -7,9 +7,8 @@ services:
     name: dynamic-audio-web
     runtime: python
     plan: starter
-    buildCommand: |
-      pip install -r requirements.txt
-      flask db upgrade
+    buildCommand: pip install -r requirements.txt
+    preDeployCommand: flask db upgrade
     startCommand: gunicorn wsgi:app --workers 2 --timeout 60
     envVars:
       - key: FLASK_ENV
