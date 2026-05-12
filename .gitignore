@@ -10,10 +10,10 @@ instance/
 
 # Output
 output/
-weather-radio-pilot/output/
+pilot/output/
 
 # Assets (user-supplied, not committed)
-weather-radio-pilot/assets/*.mp3
+pilot/assets/*.mp3
 
 # IDE
 .vscode/

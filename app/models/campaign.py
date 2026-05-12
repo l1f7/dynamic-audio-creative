@@ -16,10 +16,8 @@ PRESET_VOICES = {
     "Tyler Cruz": "SA7eD52NRr8WAehitVt1",
 }
 
-FEED_TYPES = [
-    ("weather", "Weather (Environment Canada)"),
-    ("concerts", "Concerts (JSON API or HTML scrape)"),
-]
+# Common feed types shown as suggestions — but any value is accepted
+FEED_TYPE_SUGGESTIONS = ["weather", "concerts", "events", "news", "sports", "custom"]
 
 
 class Campaign(db.Model):
@@ -39,6 +37,10 @@ class Campaign(db.Model):
 
     # Target market
     target_city = db.Column(db.String(200), nullable=True)
+
+    # Ad copy — campaign-specific (same advertiser may have different CTAs)
+    cta = db.Column(db.String(500), nullable=True)
+    seasonal_hook = db.Column(db.String(500), nullable=True)
 
     # Voice configuration
     voice_preset = db.Column(db.String(100), nullable=True)

@@ -25,6 +25,15 @@
                     {{ form.target_city(class="form-control", placeholder="e.g. Vancouver, BC") }}
                 </div>
             </div>
+            <div class="mb-3">
+                <label class="form-label">Call to Action</label>
+                {{ form.cta(class="form-control", placeholder="e.g. Get tickets at mrglive.com") }}
+                <small class="text-muted">Campaign-specific — the same advertiser can have different CTAs per campaign.</small>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Seasonal Hook</label>
+                {{ form.seasonal_hook(class="form-control", placeholder="e.g. Summer concert series kicks off this week") }}
+            </div>
             <div class="form-check mb-3">
                 {{ form.is_active(class="form-check-input") }}
                 <label class="form-check-label">Active</label>
@@ -39,7 +48,12 @@
             <div class="row">
                 <div class="col-md-4 mb-3">
                     <label class="form-label">Feed Type</label>
-                    {{ form.feed_type(class="form-select") }}
+                    {{ form.feed_type(class="form-control", list="feed-type-suggestions", placeholder="e.g. weather, concerts, events...") }}
+                    <datalist id="feed-type-suggestions">
+                        {% for ft in feed_type_suggestions %}
+                        <option value="{{ ft }}">
+                        {% endfor %}
+                    </datalist>
                 </div>
                 <div class="col-md-8 mb-3">
                     <label class="form-label">Feed URL</label>
@@ -88,6 +102,11 @@
                     <label class="form-label">Duck Fade (sec)</label>
                     {{ form.duck_fade(class="form-control", step="0.1") }}
                 </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Music Bed</label>
+                {{ form.music_bed_filename(class="form-control", placeholder="/full/path/to/music_bed.mp3") }}
+                <small class="text-muted">Local file path for development. S3 upload coming soon.</small>
             </div>
         </div>
     </div>

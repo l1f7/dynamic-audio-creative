@@ -9,13 +9,15 @@
     </div>
     <div>
         <a href="{{ url_for('admin.campaign_edit', campaign_id=campaign.id) }}" class="btn btn-outline-secondary">Edit</a>
-        <button class="btn btn-primary ms-2" disabled title="Coming in Phase 2">Generate Now</button>
+        <form method="POST" action="{{ url_for('admin.campaign_generate', campaign_id=campaign.id) }}" class="d-inline">
+            <button type="submit" class="btn btn-primary ms-2" onclick="this.disabled=true; this.innerHTML='Generating...'; this.form.submit();">Generate Now</button>
+        </form>
     </div>
 </div>
 
 <!-- Config summary -->
 <div class="row mb-4">
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card">
             <div class="card-body">
                 <h6 class="card-subtitle text-muted mb-2">Voice</h6>
@@ -23,7 +25,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card">
             <div class="card-body">
                 <h6 class="card-subtitle text-muted mb-2">Mix</h6>
@@ -31,11 +33,19 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card">
             <div class="card-body">
                 <h6 class="card-subtitle text-muted mb-2">Schedule</h6>
                 <p class="mb-0">{{ campaign.cron_schedule or 'Manual only' }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-subtitle text-muted mb-2">CTA</h6>
+                <p class="mb-0">{{ campaign.cta or 'Not set' }}</p>
             </div>
         </div>
     </div>
@@ -63,12 +73,13 @@
             <th>Triggered</th>
             <th>Created</th>
             <th>Script</th>
+            <th></th>
         </tr>
     </thead>
     <tbody>
         {% for run in runs %}
         <tr>
-            <td>#{{ run.id }}</td>
+            <td><a href="{{ url_for('admin.run_detail', run_id=run.id) }}">#{{ run.id }}</a></td>
             <td>
                 {% if run.status == 'complete' %}
                     <span class="badge badge-status-complete">{{ run.status_label }}</span>
@@ -82,9 +93,15 @@
             <td>{{ run.created_at.strftime('%Y-%m-%d %H:%M') if run.created_at else '' }}</td>
             <td>
                 {% if run.script_text %}
-                    <span class="text-truncate d-inline-block" style="max-width: 300px;">{{ run.script_text[:80] }}...</span>
+                    <span class="text-truncate d-inline-block" style="max-width: 250px;">{{ run.script_text[:80] }}...</span>
                 {% else %}
                     —
+                {% endif %}
+            </td>
+            <td>
+                {% if run.status == 'complete' and run.final_ad_s3_key %}
+                    <a href="{{ url_for('admin.run_audio', run_id=run.id) }}" class="btn btn-sm btn-outline-success" target="_blank">Play</a>
+                    <a href="{{ url_for('admin.run_download', run_id=run.id) }}" class="btn btn-sm btn-outline-secondary">Download</a>
                 {% endif %}
             </td>
         </tr>

@@ -66,3 +66,4 @@ class TestingConfig(BaseConfig):
     """Testing configuration."""
     TESTING = True
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+    WTF_CSRF_ENABLED = False  # disable CSRF for test form submissions

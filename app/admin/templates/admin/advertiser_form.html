@@ -12,16 +12,17 @@
         {{ form.name(class="form-control") }}
     </div>
     <div class="mb-3">
+        <label class="form-label">Description</label>
+        {{ form.description(class="form-control", rows=3, placeholder="Who they are and what they do. This context helps Claude write better ad transitions.") }}
+        <small class="text-muted">e.g. "MRG Live is a concert promoter operating venues across Western Canada including the Commodore Ballroom and Vogue Theatre."</small>
+    </div>
+    <div class="mb-3">
         <label class="form-label">Tagline</label>
         {{ form.tagline(class="form-control", placeholder="e.g. For the love of the outdoors") }}
     </div>
     <div class="mb-3">
-        <label class="form-label">Call to Action</label>
-        {{ form.cta(class="form-control", placeholder="e.g. Visit example.com or call 555-1234") }}
-    </div>
-    <div class="mb-3">
-        <label class="form-label">Seasonal Hook</label>
-        {{ form.seasonal_hook(class="form-control", placeholder="e.g. Spring hiking season is here") }}
+        <label class="form-label">Website</label>
+        {{ form.website(class="form-control", placeholder="e.g. mrglive.com") }}
     </div>
     <div class="form-check mb-3">
         {{ form.is_active(class="form-check-input") }}

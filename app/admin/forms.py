@@ -12,7 +12,7 @@ from wtforms import (
 )
 from wtforms.validators import DataRequired, Optional, NumberRange
 
-from app.models.campaign import FEED_TYPES, PRESET_VOICES
+from app.models.campaign import PRESET_VOICES
 
 
 class LoginForm(FlaskForm):
@@ -22,9 +22,9 @@ class LoginForm(FlaskForm):
 
 class AdvertiserForm(FlaskForm):
     name = StringField("Advertiser Name", validators=[DataRequired()])
+    description = TextAreaField("Description", validators=[Optional()])
     tagline = StringField("Tagline", validators=[Optional()])
-    cta = StringField("Call to Action", validators=[Optional()])
-    seasonal_hook = StringField("Seasonal Hook", validators=[Optional()])
+    website = StringField("Website", validators=[Optional()])
     is_active = BooleanField("Active", default=True)
 
 
@@ -34,13 +34,13 @@ class CampaignForm(FlaskForm):
     is_active = BooleanField("Active", default=True)
 
     # Feed
-    feed_type = SelectField(
-        "Feed Type",
-        choices=FEED_TYPES,
-        validators=[DataRequired()],
-    )
+    feed_type = StringField("Feed Type", validators=[DataRequired()])
     feed_url = StringField("Feed URL", validators=[Optional()])
     target_city = StringField("Target City", validators=[Optional()])
+
+    # Ad copy
+    cta = StringField("Call to Action", validators=[Optional()])
+    seasonal_hook = StringField("Seasonal Hook", validators=[Optional()])
 
     # Voice
     voice_preset = SelectField(
@@ -73,6 +73,9 @@ class CampaignForm(FlaskForm):
         default=0.5,
         validators=[NumberRange(min=0, max=5)],
     )
+
+    # Music bed
+    music_bed_filename = StringField("Music Bed (local file path)", validators=[Optional()])
 
     # Script
     prompt_template = TextAreaField("Prompt Template (leave blank for default)", validators=[Optional()])

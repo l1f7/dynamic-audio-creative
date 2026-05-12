@@ -1,6 +1,8 @@
 """Admin blueprint routes — CRUD for advertisers and campaigns."""
 
-from flask import flash, redirect, render_template, request, url_for
+import os
+
+from flask import flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 
 from app.admin import admin_bp
@@ -67,9 +69,9 @@ def advertiser_new():
     if form.validate_on_submit():
         adv = Advertiser(
             name=form.name.data,
-            tagline=form.tagline.data,
-            cta=form.cta.data,
-            seasonal_hook=form.seasonal_hook.data,
+            description=form.description.data or None,
+            tagline=form.tagline.data or None,
+            website=form.website.data or None,
             is_active=form.is_active.data,
         )
         db.session.add(adv)
@@ -120,6 +122,8 @@ def campaign_new():
             feed_type=form.feed_type.data,
             feed_url=form.feed_url.data or None,
             target_city=form.target_city.data or None,
+            cta=form.cta.data or None,
+            seasonal_hook=form.seasonal_hook.data or None,
             voice_preset=form.voice_preset.data or None,
             voice_custom_id=form.voice_custom_id.data or None,
             intro_seconds=form.intro_seconds.data,
@@ -140,7 +144,12 @@ def campaign_new():
         flash(f"Campaign '{campaign.name}' created.", "success")
         return redirect(url_for("admin.campaign_detail", campaign_id=campaign.id))
 
-    return render_template("admin/campaign_form.html", form=form, editing=False)
+    return render_template(
+        "admin/campaign_form.html",
+        form=form,
+        editing=False,
+        feed_type_suggestions=_get_feed_type_suggestions(),
+    )
 
 
 @admin_bp.route("/campaigns/<int:campaign_id>")
@@ -153,6 +162,89 @@ def campaign_detail(campaign_id):
         campaign=campaign,
         runs=runs,
     )
+
+
+@admin_bp.route("/campaigns/<int:campaign_id>/generate", methods=["POST"])
+@login_required
+def campaign_generate(campaign_id):
+    """Trigger ad generation for a campaign (runs synchronously for now)."""
+    campaign = Campaign.query.get_or_404(campaign_id)
+
+    from app.pipeline.runner import run_pipeline
+    ad_run = run_pipeline(campaign.id, triggered_by="manual")
+
+    if ad_run.status == "complete":
+        flash("Ad generated successfully!", "success")
+    else:
+        flash(f"Generation failed: {ad_run.error_message}", "danger")
+
+    return redirect(url_for("admin.campaign_detail", campaign_id=campaign.id))
+
+
+@admin_bp.route("/runs/<int:run_id>")
+@login_required
+def run_detail(run_id):
+    """Show details of an ad run — script, status, audio player."""
+    ad_run = AdRun.query.get_or_404(run_id)
+    return render_template("admin/run_detail.html", run=ad_run)
+
+
+@admin_bp.route("/runs/<int:run_id>/audio")
+@login_required
+def run_audio(run_id):
+    """Serve the final ad MP3 for playback or download."""
+    ad_run = AdRun.query.get_or_404(run_id)
+
+    if not ad_run.final_ad_s3_key:
+        flash("No audio available for this run.", "warning")
+        return redirect(url_for("admin.run_detail", run_id=run_id))
+
+    # Local file (dev) — serve directly
+    if os.path.isfile(ad_run.final_ad_s3_key):
+        return send_file(
+            ad_run.final_ad_s3_key,
+            mimetype="audio/mpeg",
+            as_attachment=False,
+            download_name=f"ad_run_{run_id}.mp3",
+        )
+
+    # S3 — redirect to signed URL
+    from flask import current_app
+    if current_app.config.get("S3_ENDPOINT_URL"):
+        from app.storage import s3
+        url = s3.generate_signed_url(ad_run.final_ad_s3_key)
+        return redirect(url)
+
+    flash("Audio file not found.", "danger")
+    return redirect(url_for("admin.run_detail", run_id=run_id))
+
+
+@admin_bp.route("/runs/<int:run_id>/download")
+@login_required
+def run_download(run_id):
+    """Download the final ad MP3."""
+    ad_run = AdRun.query.get_or_404(run_id)
+
+    if not ad_run.final_ad_s3_key:
+        flash("No audio available for this run.", "warning")
+        return redirect(url_for("admin.run_detail", run_id=run_id))
+
+    if os.path.isfile(ad_run.final_ad_s3_key):
+        return send_file(
+            ad_run.final_ad_s3_key,
+            mimetype="audio/mpeg",
+            as_attachment=True,
+            download_name=f"ad_{ad_run.campaign.name}_{run_id}.mp3",
+        )
+
+    from flask import current_app
+    if current_app.config.get("S3_ENDPOINT_URL"):
+        from app.storage import s3
+        url = s3.generate_signed_url(ad_run.final_ad_s3_key)
+        return redirect(url)
+
+    flash("Audio file not found.", "danger")
+    return redirect(url_for("admin.run_detail", run_id=run_id))
 
 
 @admin_bp.route("/campaigns/<int:campaign_id>/edit", methods=["GET", "POST"])
@@ -191,10 +283,29 @@ def campaign_edit(campaign_id):
         form=form,
         editing=True,
         campaign=campaign,
+        feed_type_suggestions=_get_feed_type_suggestions(),
     )
 
 
 # ---- Helpers ----
+
+def _get_feed_type_suggestions() -> list[str]:
+    """Return a deduplicated list of feed type suggestions.
+
+    Combines the built-in suggestions with any feed types already used
+    in existing campaigns, so the dropdown grows organically.
+    """
+    from app.models.campaign import FEED_TYPE_SUGGESTIONS
+
+    existing = (
+        db.session.query(Campaign.feed_type)
+        .distinct()
+        .all()
+    )
+    existing_types = {r[0] for r in existing if r[0]}
+    all_types = sorted(set(FEED_TYPE_SUGGESTIONS) | existing_types)
+    return all_types
+
 
 def _save_pronunciation_entries(campaign, form_data):
     """Parse dynamic pronunciation rows from the form and save them.

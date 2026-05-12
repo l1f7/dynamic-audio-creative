@@ -1,0 +1,65 @@
+{% extends "admin/base.html" %}
+{% block title %}Run #{{ run.id }} — DAC Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2>Run #{{ run.id }}</h2>
+        <p class="text-muted mb-0">
+            <a href="{{ url_for('admin.campaign_detail', campaign_id=run.campaign.id) }}">{{ run.campaign.name }}</a>
+            &middot; {{ run.campaign.advertiser.name }}
+            &middot; {{ run.triggered_by }}
+            &middot; {{ run.created_at.strftime('%Y-%m-%d %H:%M') if run.created_at else '' }}
+        </p>
+    </div>
+    <div>
+        {% if run.status == 'complete' %}
+            <span class="badge badge-status-complete fs-6">{{ run.status_label }}</span>
+        {% elif run.status == 'failed' %}
+            <span class="badge badge-status-failed fs-6">{{ run.status_label }}</span>
+        {% else %}
+            <span class="badge badge-status-running fs-6">{{ run.status_label }}</span>
+        {% endif %}
+    </div>
+</div>
+
+{% if run.status == 'complete' and run.final_ad_s3_key %}
+<div class="card mb-4">
+    <div class="card-header">Final Ad</div>
+    <div class="card-body">
+        <audio controls class="w-100 mb-3">
+            <source src="{{ url_for('admin.run_audio', run_id=run.id) }}" type="audio/mpeg">
+            Your browser does not support the audio element.
+        </audio>
+        <a href="{{ url_for('admin.run_download', run_id=run.id) }}" class="btn btn-outline-primary">Download MP3</a>
+    </div>
+</div>
+{% endif %}
+
+{% if run.script_text %}
+<div class="card mb-4">
+    <div class="card-header">Generated Script</div>
+    <div class="card-body">
+        <p class="mb-0" style="white-space: pre-wrap; line-height: 1.8;">{{ run.script_text }}</p>
+    </div>
+</div>
+{% endif %}
+
+{% if run.error_message %}
+<div class="card mb-4 border-danger">
+    <div class="card-header text-danger">Error</div>
+    <div class="card-body">
+        <pre class="mb-0 text-danger">{{ run.error_message }}</pre>
+    </div>
+</div>
+{% endif %}
+
+{% if run.feed_data_snapshot %}
+<div class="card mb-4">
+    <div class="card-header">Feed Data Snapshot</div>
+    <div class="card-body">
+        <pre class="mb-0" style="font-size: 0.85rem;">{{ run.feed_data_snapshot | tojson(indent=2) }}</pre>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
