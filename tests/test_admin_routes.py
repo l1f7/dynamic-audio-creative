@@ -1,5 +1,6 @@
 """Tests for admin blueprint routes."""
 
+from sqlalchemy import inspect
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.extensions import db
@@ -282,6 +283,26 @@ class TestCampaignCRUD:
 
 
 class TestAdminUsers:
+    def test_missing_admin_users_table_is_recreated(self, client):
+        with client.application.app_context():
+            db.drop_all()
+
+        resp = client.post(
+            "/admin/login",
+            data={"email": "admin", "password": "changeme"},
+            follow_redirects=True,
+        )
+
+        assert resp.status_code == 200
+        assert b"Dashboard" in resp.data
+
+        resp = client.get("/admin/users")
+        assert resp.status_code == 200
+
+        with client.application.app_context():
+            inspector = inspect(db.engine)
+            assert inspector.has_table("admin_users") is True
+
     def test_user_list_excludes_bootstrap_identity(self, authenticated_client):
         resp = authenticated_client.get("/admin/users")
         assert resp.status_code == 200

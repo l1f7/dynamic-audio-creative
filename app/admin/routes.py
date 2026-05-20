@@ -4,6 +4,8 @@ import logging
 import os
 from datetime import datetime, timezone
 
+from sqlalchemy import inspect
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from flask import abort, current_app, flash, redirect, render_template, request, send_file, url_for
 from werkzeug.utils import secure_filename
 from flask_login import current_user, login_required, login_user, logout_user
@@ -32,6 +34,33 @@ MUST_CHANGE_ALLOWED_ENDPOINTS = {
     "admin.account_password",
     "admin.logout",
 }
+SCHEMA_TABLES = {
+    "ad_runs",
+    "admin_users",
+    "advertisers",
+    "campaigns",
+    "pronunciation_entries",
+}
+
+logger = logging.getLogger(__name__)
+
+
+@admin_bp.before_request
+def ensure_database_schema():
+    try:
+        existing_tables = set(inspect(db.engine).get_table_names())
+        missing_tables = sorted(SCHEMA_TABLES - existing_tables)
+        if missing_tables:
+            logger.warning(
+                "Missing database tables detected: %s. Creating tables from models.",
+                ", ".join(missing_tables),
+            )
+            db.create_all()
+    except (OperationalError, ProgrammingError):
+        logger.exception("Database schema check failed for admin request")
+        db.session.rollback()
+
+    return None
 
 
 @admin_bp.before_request
