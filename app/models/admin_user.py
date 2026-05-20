@@ -6,6 +6,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.extensions import db
 
+PASSWORD_HASH_METHOD = "pbkdf2:sha256"
+
 
 class AdminUser(UserMixin, db.Model):
     __tablename__ = "admin_users"
@@ -38,7 +40,10 @@ class AdminUser(UserMixin, db.Model):
         return (value or "").strip().lower()
 
     def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+        self.password_hash = generate_password_hash(
+            password,
+            method=PASSWORD_HASH_METHOD,
+        )
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)

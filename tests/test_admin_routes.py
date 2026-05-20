@@ -4,6 +4,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.extensions import db
 from app.models import AdminUser, Advertiser, Campaign, PronunciationEntry
+from app.models.admin_user import PASSWORD_HASH_METHOD
 
 
 class TestAuth:
@@ -29,7 +30,10 @@ class TestAuth:
     def test_database_user_login_success(self, client):
         user = AdminUser(
             email="person@example.com",
-            password_hash=generate_password_hash("supersecure123"),
+            password_hash=generate_password_hash(
+                "supersecure123",
+                method=PASSWORD_HASH_METHOD,
+            ),
             is_active=True,
             must_change_password=False,
         )
@@ -55,7 +59,10 @@ class TestAuth:
     def test_inactive_user_cannot_login(self, client):
         user = AdminUser(
             email="inactive@example.com",
-            password_hash=generate_password_hash("supersecure123"),
+            password_hash=generate_password_hash(
+                "supersecure123",
+                method=PASSWORD_HASH_METHOD,
+            ),
             is_active=False,
             must_change_password=False,
         )
@@ -72,7 +79,10 @@ class TestAuth:
     def test_must_change_password_redirects_after_login(self, client):
         user = AdminUser(
             email="forced@example.com",
-            password_hash=generate_password_hash("supersecure123"),
+            password_hash=generate_password_hash(
+                "supersecure123",
+                method=PASSWORD_HASH_METHOD,
+            ),
             is_active=True,
             must_change_password=True,
         )
@@ -97,7 +107,10 @@ class TestDashboard:
     def test_must_change_password_blocks_dashboard(self, client):
         user = AdminUser(
             email="forced@example.com",
-            password_hash=generate_password_hash("supersecure123"),
+            password_hash=generate_password_hash(
+                "supersecure123",
+                method=PASSWORD_HASH_METHOD,
+            ),
             is_active=True,
             must_change_password=True,
         )
@@ -296,7 +309,10 @@ class TestAdminUsers:
         db.session.add(
             AdminUser(
                 email="duplicate@example.com",
-                password_hash=generate_password_hash("temp-password1"),
+                password_hash=generate_password_hash(
+                    "temp-password1",
+                    method=PASSWORD_HASH_METHOD,
+                ),
                 is_active=True,
             )
         )
@@ -318,7 +334,10 @@ class TestAdminUsers:
         user = AdminUser(
             email="editme@example.com",
             full_name="Old Name",
-            password_hash=generate_password_hash("temp-password1"),
+            password_hash=generate_password_hash(
+                "temp-password1",
+                method=PASSWORD_HASH_METHOD,
+            ),
             is_active=True,
         )
         db.session.add(user)
@@ -341,7 +360,10 @@ class TestAdminUsers:
     def test_reset_password(self, authenticated_client):
         user = AdminUser(
             email="reset@example.com",
-            password_hash=generate_password_hash("old-password1"),
+            password_hash=generate_password_hash(
+                "old-password1",
+                method=PASSWORD_HASH_METHOD,
+            ),
             is_active=True,
             must_change_password=False,
         )
@@ -371,7 +393,10 @@ class TestAdminUsers:
     def test_toggle_active_deactivates_user(self, authenticated_client):
         user = AdminUser(
             email="other@example.com",
-            password_hash=generate_password_hash("temp-password1"),
+            password_hash=generate_password_hash(
+                "temp-password1",
+                method=PASSWORD_HASH_METHOD,
+            ),
             is_active=True,
         )
         db.session.add(user)

@@ -6,6 +6,7 @@ from werkzeug.security import generate_password_hash
 from app import create_app
 from app.extensions import db as _db
 from app.models import AdminUser
+from app.models.admin_user import PASSWORD_HASH_METHOD
 
 
 @pytest.fixture(scope="session")
@@ -39,7 +40,10 @@ def authenticated_client(client, app):
     user = AdminUser(
         email="admin@example.com",
         full_name="Admin User",
-        password_hash=generate_password_hash("changeme12345"),
+        password_hash=generate_password_hash(
+            "changeme12345",
+            method=PASSWORD_HASH_METHOD,
+        ),
         is_active=True,
         must_change_password=False,
     )
