@@ -3,6 +3,7 @@
 from app.pipeline.feeds.concerts import ConcertsFeed
 from app.pipeline.feeds.generic import GenericFeed
 from app.pipeline.feeds.weather import WeatherFeed
+from app.pipeline.feeds.world_cup import WorldCupFeed
 
 # Register known feed types here. Unknown types fall back to
 # GenericFeed, which uses Claude to extract structured data from
@@ -10,6 +11,7 @@ from app.pipeline.feeds.weather import WeatherFeed
 FEED_REGISTRY = {
     "weather": WeatherFeed,
     "concerts": ConcertsFeed,
+    "world_cup": WorldCupFeed,
 }
 
 

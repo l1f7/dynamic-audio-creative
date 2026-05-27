@@ -21,3 +21,6 @@ pilot/assets/*.mp3
 
 # OS
 .DS_Store
+
+# Local Python Config
+venv/
