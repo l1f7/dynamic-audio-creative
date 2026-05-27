@@ -39,10 +39,11 @@ INSTRUCTIONS:
 - Lead with the next upcoming show ({next_artist} on {next_date} at {next_venue})
 - Tease 1-2 more shows from the lineup
 - Close with the promoter name, tagline, and call to action
-- Do not use any formatting, headers, or stage directions — plain flowing text only
 - Write as if an enthusiastic local radio host is speaking
 {pronunciation_instruction}\
-- Output only the final script, nothing else\
+- CRITICAL: Output ONLY the script text — no introductions, no commentary, no \
+markdown, no bullet points, no headers, no bold/italic, no sign-offs, no questions. \
+Just plain flowing spoken-word text that will be read aloud by a voice actor\
 """
 
 HTML_EXTRACTION_PROMPT = """\

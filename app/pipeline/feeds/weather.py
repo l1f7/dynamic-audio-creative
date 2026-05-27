@@ -42,10 +42,11 @@ INSTRUCTIONS:
 - Start with the weather report — current conditions, tonight's low, tomorrow's outlook, and a one-day lookahead
 - Write a single smooth transition sentence that bridges the weather to the advertiser
 - Close with the advertiser name, tagline, and call to action
-- Do not use any formatting, headers, or stage directions — plain flowing text only
 - Write as if a friendly local radio announcer is speaking
 {pronunciation_instruction}\
-- Output only the final script, nothing else\
+- CRITICAL: Output ONLY the script text — no introductions, no commentary, no \
+markdown, no bullet points, no headers, no bold/italic, no sign-offs, no questions. \
+Just plain flowing spoken-word text that will be read aloud by a voice actor\
 """
 
 
