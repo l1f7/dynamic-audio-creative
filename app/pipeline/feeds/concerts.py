@@ -72,7 +72,7 @@ class ConcertsFeed(BaseFeed):
             resp = requests.get(feed_url, timeout=15)
             resp.raise_for_status()
         except requests.RequestException as exc:
-            raise FeedFetchError(f"Concert feed fetch failed: {exc}") from exc
+            raise FeedFetchError(f"Feed fetch failed: {exc}") from exc
 
         content_type = resp.headers.get("content-type", "")
 
@@ -82,7 +82,7 @@ class ConcertsFeed(BaseFeed):
             shows = self._extract_shows_from_html(resp.text, max_shows)
 
         if not shows:
-            raise FeedFetchError("No shows found in concert feed.")
+            raise FeedFetchError("No items found in feed.")
 
         return _build_template_vars(shows[:max_shows])
 

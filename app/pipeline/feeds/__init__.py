@@ -1,10 +1,12 @@
 """Feed registry — maps feed_type strings to feed classes."""
 
-from app.pipeline.feeds.weather import WeatherFeed
 from app.pipeline.feeds.concerts import ConcertsFeed
+from app.pipeline.feeds.generic import GenericFeed
+from app.pipeline.feeds.weather import WeatherFeed
 
-# Register known feed types here. Unknown types will use a generic
-# "custom" approach (just fetches the URL and passes to Claude).
+# Register known feed types here. Unknown types fall back to
+# GenericFeed, which uses Claude to extract structured data from
+# any URL — JSON, HTML, or XML.
 FEED_REGISTRY = {
     "weather": WeatherFeed,
     "concerts": ConcertsFeed,
@@ -14,8 +16,9 @@ FEED_REGISTRY = {
 def get_feed(feed_type: str):
     """Return a feed instance for the given type.
 
-    Falls back to ConcertsFeed for unknown types (it handles both
-    JSON and HTML scraping, which is a reasonable default).
+    Falls back to GenericFeed for unknown types — it uses Claude to
+    intelligently extract data from any feed format and includes
+    sport-specific tone guidance when applicable.
     """
-    feed_class = FEED_REGISTRY.get(feed_type, ConcertsFeed)
+    feed_class = FEED_REGISTRY.get(feed_type, GenericFeed)
     return feed_class()
