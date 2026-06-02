@@ -91,17 +91,9 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
     logger.info("[Frequency] Step 1 response: %s", validate_data)
     campaign_id = validate_data["tokenData"]["campaign_id"]
 
-    # Extract the sid cookie from the response directly — bypasses requests
-    # cookie-jar domain/path policy that silently drops it on subsequent calls.
-    sid = validate_resp.cookies.get("sid")
-    logger.info("[Frequency] Step 1 OK — campaign_id=%s  sid=%s",
-                campaign_id, "set" if sid else "MISSING")
-    if not sid:
-        raise FrequencyDeliveryError(
-            "Frequency validate did not return a session cookie (sid). "
-            "Check client/token credentials."
-        )
-    auth_cookies = {"sid": sid}
+    logger.info("[Frequency] Step 1 OK — campaign_id=%s", campaign_id)
+    # All subsequent endpoints use apiKey auth: raw JWT in the Authorization header.
+    auth_headers = {"Authorization": token}
 
     # --- Step 2: Create draft ---
     logger.info(
@@ -109,7 +101,7 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
         base_url,
         app_id,
     )
-    draft_data = _create_draft(base_url, app_id, auth_cookies)
+    draft_data = _create_draft(base_url, app_id, auth_headers)
     logger.info("[Frequency] Step 2 response: %s", draft_data)
     draft_id = draft_data["id"]
     logger.info("[Frequency] Step 2 OK — draft_id=%s", draft_id)
@@ -126,7 +118,7 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
         app_id,
     )
     creative_data = _upload_creative(
-        base_url, app_id, campaign_id, final_ad_bytes, duration_secs, auth_cookies
+        base_url, app_id, campaign_id, final_ad_bytes, duration_secs, auth_headers
     )
     logger.info("[Frequency] Step 3 response: %s", creative_data)
     logger.info(
@@ -151,7 +143,7 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
         draft_id,
         attach_body,
     )
-    _attach_creative(base_url, app_id, draft_id, creative_data, auth_cookies)
+    _attach_creative(base_url, app_id, draft_id, creative_data, auth_headers)
     logger.info("[Frequency] Step 4 OK")
 
     # --- Step 5: Publish ---
@@ -164,7 +156,7 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
         draft_id,
         publish_date,
     )
-    vast_xml = _publish_draft(base_url, app_id, draft_id, auth_cookies)
+    vast_xml = _publish_draft(base_url, app_id, draft_id, auth_headers)
     logger.info("[Frequency] Step 5 response (first 500 chars): %s", vast_xml[:500])
     logger.info("[Frequency] Delivery complete for ad_run #%s", ad_run.id)
 
@@ -184,9 +176,9 @@ def _validate(base_url: str, client: str, token: str) -> requests.Response:
     return resp
 
 
-def _create_draft(base_url: str, app_id: str, cookies: dict) -> dict:
+def _create_draft(base_url: str, app_id: str, headers: dict) -> dict:
     url = f"{base_url}/application/{app_id}/draft"
-    resp = requests.post(url, json={}, cookies=cookies, timeout=30)
+    resp = requests.post(url, json={}, headers=headers, timeout=30)
     logger.info(
         "[Frequency] _create_draft HTTP %s — %s", resp.status_code, resp.text[:500]
     )
@@ -200,7 +192,7 @@ def _upload_creative(
     campaign_id,
     audio_bytes: bytes,
     duration_secs: int,
-    cookies: dict,
+    headers: dict,
 ) -> dict:
     url = f"{base_url}/campaign/{campaign_id}/upload-creative"
     files = {
@@ -210,7 +202,7 @@ def _upload_creative(
         "duration": str(duration_secs),
         "applicationId": str(app_id),
     }
-    resp = requests.post(url, files=files, data=data, cookies=cookies, timeout=120)
+    resp = requests.post(url, files=files, data=data, headers=headers, timeout=120)
     logger.info(
         "[Frequency] _upload_creative HTTP %s — %s", resp.status_code, resp.text[:500]
     )
@@ -223,7 +215,7 @@ def _attach_creative(
     app_id: str,
     draft_id,
     creative_data: dict,
-    cookies: dict,
+    headers: dict,
 ) -> None:
     url = f"{base_url}/application/{app_id}/draft/{draft_id}/creative"
     body = {
@@ -234,7 +226,7 @@ def _attach_creative(
         "fileWeight": 100,
         "rowIndex": 0,
     }
-    resp = requests.post(url, json=body, cookies=cookies, timeout=30)
+    resp = requests.post(url, json=body, headers=headers, timeout=30)
     logger.info(
         "[Frequency] _attach_creative HTTP %s — %s", resp.status_code, resp.text[:500]
     )
@@ -242,12 +234,12 @@ def _attach_creative(
 
 
 def _publish_draft(
-    base_url: str, app_id: str, draft_id, cookies: dict
+    base_url: str, app_id: str, draft_id, headers: dict
 ) -> str:
     url = f"{base_url}/application/{app_id}/draft/{draft_id}/publish"
     today = datetime.now(timezone.utc).strftime("%d/%m/%Y")
     body = {"schedulePublishDate": today}
-    resp = requests.post(url, json=body, cookies=cookies, timeout=30)
+    resp = requests.post(url, json=body, headers=headers, timeout=30)
     logger.info(
         "[Frequency] _publish_draft HTTP %s — %s", resp.status_code, resp.text[:500]
     )
