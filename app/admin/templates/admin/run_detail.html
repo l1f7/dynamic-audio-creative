@@ -54,6 +54,22 @@
 </div>
 {% endif %}
 
+{% if run.delivery_error %}
+<div class="card mb-4 border-warning">
+    <div class="card-header text-warning">Frequency Delivery Failed</div>
+    <div class="card-body">
+        <pre class="mb-0 text-warning">{{ run.delivery_error }}</pre>
+    </div>
+</div>
+{% elif run.delivered_at %}
+<div class="card mb-4 border-success">
+    <div class="card-header text-success">Delivered to Frequency</div>
+    <div class="card-body">
+        <p class="mb-0 text-muted">Delivered at {{ run.delivered_at.strftime('%Y-%m-%d %H:%M') }}</p>
+    </div>
+</div>
+{% endif %}
+
 {% if run.feed_data_snapshot %}
 <div class="card mb-4">
     <div class="card-header">Feed Data Snapshot</div>

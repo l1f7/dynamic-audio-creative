@@ -36,6 +36,8 @@ class AdvertiserForm(FlaskForm):
     tagline = StringField("Tagline", validators=[Optional()])
     website = StringField("Website", validators=[Optional()])
     is_active = BooleanField("Active", default=True)
+    frequency_client = StringField("Frequency Client Name", validators=[Optional()])
+    frequency_token = StringField("Frequency Token", validators=[Optional()])
 
 
 class CampaignForm(FlaskForm):
@@ -104,6 +106,7 @@ class CampaignForm(FlaskForm):
     )
 
     # Delivery
+    delivery_enabled = BooleanField("Enable Frequency Delivery", default=False)
     frequency_app_id = StringField("Frequency App ID", validators=[Optional()])
 
 

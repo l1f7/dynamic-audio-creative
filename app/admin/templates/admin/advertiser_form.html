@@ -29,6 +29,18 @@
         <label class="form-check-label">Active</label>
     </div>
 
+    <hr class="my-4">
+    <h5>Frequency</h5>
+    <div class="mb-3">
+        <label class="form-label">Frequency Client Name</label>
+        {{ form.frequency_client(class="form-control", placeholder="e.g. mrglive") }}
+        <small class="text-muted">Used in the Frequency validation request. Leave blank if not using Frequency delivery.</small>
+    </div>
+    <div class="mb-3">
+        <label class="form-label">Frequency Token</label>
+        {{ form.frequency_token(class="form-control") }}
+    </div>
+
     <button type="submit" class="btn btn-primary">{{ 'Update' if editing else 'Create' }} Advertiser</button>
     <a href="{{ url_for('admin.advertiser_list') }}" class="btn btn-outline-secondary ms-2">Cancel</a>
 </form>

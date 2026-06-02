@@ -1,5 +1,6 @@
 """Flask application factory."""
 
+import logging
 import os
 
 from flask import Flask
@@ -9,6 +10,11 @@ from app.extensions import db, migrate, login_manager
 
 def create_app(config_name=None):
     """Create and configure the Flask application."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
     app = Flask(__name__)
 
     # Load config

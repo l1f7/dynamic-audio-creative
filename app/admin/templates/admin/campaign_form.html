@@ -204,9 +204,15 @@
         <div class="card-header">Delivery</div>
         <div class="card-body">
             <div class="mb-3">
+                <div class="form-check">
+                    {{ form.delivery_enabled(class="form-check-input") }}
+                    <label class="form-check-label">{{ form.delivery_enabled.label.text }}</label>
+                </div>
+            </div>
+            <div class="mb-3">
                 <label class="form-label">Frequency App ID</label>
-                {{ form.frequency_app_id(class="form-control", placeholder="Leave blank to skip Frequency delivery") }}
-                <small class="text-muted">When set, generated ads are automatically uploaded to the Frequency Campaign Manager.</small>
+                {{ form.frequency_app_id(class="form-control", placeholder="e.g. 12345") }}
+                <small class="text-muted">Required when delivery is enabled. The Frequency application ID to deliver ads to.</small>
             </div>
         </div>
     </div>

@@ -283,6 +283,8 @@ def advertiser_new():
             tagline=form.tagline.data or None,
             website=form.website.data or None,
             is_active=form.is_active.data,
+            frequency_client=form.frequency_client.data or None,
+            frequency_token=form.frequency_token.data or None,
         )
         db.session.add(adv)
         db.session.commit()

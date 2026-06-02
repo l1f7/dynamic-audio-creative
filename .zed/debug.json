@@ -1,0 +1,14 @@
+[
+  {
+    "adapter": "Debugpy",
+    "label": "Flask",
+    "request": "launch",
+    "module": "flask",
+    "args": ["run", "--no-debugger", "--no-reload"],
+    "env": {
+      "FLASK_APP": "wsgi.py",
+      "FLASK_ENV": "development"
+    },
+    "cwd": "$ZED_WORKTREE_ROOT"
+  }
+]
