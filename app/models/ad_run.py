@@ -45,6 +45,7 @@ class AdRun(db.Model):
     delivered_at = db.Column(db.DateTime, nullable=True)
     delivery_reference = db.Column(db.String(500), nullable=True)
     delivery_error = db.Column(db.Text, nullable=True)
+    vast_response = db.Column(db.Text, nullable=True)
 
     # Job tracking
     job_id = db.Column(db.String(100), nullable=True)

@@ -344,6 +344,7 @@ def campaign_new():
             target_seconds=form.target_seconds.data,
             target_words=form.target_words.data,
             cron_schedule=form.cron_schedule.data or None,
+            frequency_app_id=form.frequency_app_id.data or None,
         )
         db.session.add(campaign)
         db.session.commit()

@@ -1,98 +1,200 @@
-"""Frequency ad server delivery — placeholder.
+"""Frequency Campaign Manager API delivery.
 
-This module handles delivering generated ad MP3s to Frequency, the ad
-trafficking/delivery server. The actual integration is pending API/SFTP
-documentation from the Frequency team.
-
-When the documentation arrives, implement one of:
-  - REST API: POST the MP3 (or a signed URL) to Frequency's creative endpoint
-  - SFTP: Upload the MP3 to a designated drop folder on Frequency's SFTP server
-
-Configuration lives in:
-  - Campaign.delivery_enabled — per-campaign toggle
-  - Campaign.delivery_config — JSON blob for campaign-specific delivery params
-    (e.g. Frequency creative ID, flight dates, rotation weight)
-  - App config: FREQUENCY_API_URL, FREQUENCY_API_KEY, FREQUENCY_SFTP_HOST, etc.
-
-The pipeline runner calls deliver_ad() after a successful generation. If delivery
-is not enabled or not implemented, it logs a warning and the ad remains available
-for manual download from the admin UI.
+Five-step workflow:
+  1. Validate  — GET  /campaign/validate/{client}/{token}
+  2. New draft — POST /Application/{appId}/draft
+  3. Upload    — POST /campaign/{campaignId}/upload-creative  (multipart)
+  4. Attach    — POST /application/{appId}/draft/{draftId}/creative
+  5. Publish   — POST /application/{appId}/draft/{draftId}/publish
 """
 
+import io
 import logging
+import subprocess
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+import requests
+from flask import current_app
 
 logger = logging.getLogger(__name__)
 
 
 class FrequencyDeliveryError(Exception):
-    """Raised when delivery to Frequency fails."""
-    pass
+    """Raised when any step of the Frequency delivery workflow fails."""
 
 
 class FrequencyNotConfiguredError(Exception):
-    """Raised when delivery is attempted but Frequency is not configured."""
-    pass
+    """Raised when required Frequency config or advertiser credentials are missing."""
 
+
+# ---------------------------------------------------------------------------
+# Public helpers
+# ---------------------------------------------------------------------------
 
 def is_delivery_available() -> bool:
-    """Check whether Frequency delivery is implemented and configured.
+    """Return True if Frequency delivery is globally enabled and the base URL is set."""
+    try:
+        cfg = current_app.config
+        return bool(cfg.get("FREQUENCY_ENABLED") and cfg.get("CMPAPI_BASE_URL"))
+    except RuntimeError:
+        return False
 
-    Returns False until the integration is built. The admin UI uses this
-    to show/hide delivery options.
-    """
-    # TODO: Check FREQUENCY_ENABLED config and credentials
-    return False
 
-
-def deliver_ad(ad_run, final_ad_bytes: bytes = None, final_ad_url: str = None) -> str:
-    """Deliver a completed ad to the Frequency ad server.
+def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
+    """Run the full five-step Frequency delivery workflow.
 
     Args:
-        ad_run: AdRun model instance with final_ad_s3_key populated.
-        final_ad_bytes: Raw MP3 bytes (if pushing the file directly).
-        final_ad_url: Signed URL to the MP3 (if Frequency can pull from a URL).
+        ad_run:         AdRun model instance (campaign and advertiser must be loaded).
+        final_ad_bytes: Raw MP3 bytes of the finished ad.
 
     Returns:
-        A delivery reference string from Frequency (creative ID, filename, etc.).
+        The VAST XML string returned by the publish step.
 
     Raises:
-        FrequencyNotConfiguredError: If Frequency integration is not yet available.
-        FrequencyDeliveryError: If delivery is attempted but fails.
+        FrequencyNotConfiguredError: Missing config or advertiser credentials.
+        FrequencyDeliveryError:      Any API step returns a non-2xx response.
     """
-    # ------------------------------------------------------------------
-    # TODO: Implement when Frequency API/SFTP documentation is available.
-    #
-    # Expected integration patterns:
-    #
-    # Option A — REST API:
-    #   1. POST to FREQUENCY_API_URL/creatives with:
-    #      - MP3 file or signed URL
-    #      - Metadata: campaign name, advertiser, flight dates
-    #      - Frequency-specific fields from campaign.delivery_config
-    #   2. Parse response for creative ID
-    #   3. Return creative ID as delivery_reference
-    #
-    # Option B — SFTP:
-    #   1. Connect to FREQUENCY_SFTP_HOST with credentials
-    #   2. Upload MP3 to designated folder (e.g. /incoming/{campaign_id}/)
-    #   3. Optionally upload a metadata sidecar file (XML/JSON)
-    #   4. Return the remote path as delivery_reference
-    #
-    # Configuration to add to Campaign.delivery_config:
-    #   - frequency_creative_id: maps this campaign to a Frequency slot
-    #   - frequency_station_ids: which stations receive this ad
-    #   - frequency_flight_start / frequency_flight_end: scheduling
-    #   - frequency_rotation_weight: how often to play
-    # ------------------------------------------------------------------
+    cfg = current_app.config
+    base_url = cfg.get("CMPAPI_BASE_URL", "").rstrip("/")
+    app_id = ad_run.campaign.frequency_app_id
 
-    logger.warning(
-        "Frequency delivery not yet implemented. "
-        "Ad run #%s generated successfully but not delivered. "
-        "Download manually from the admin UI.",
-        ad_run.id,
-    )
+    if not base_url:
+        raise FrequencyNotConfiguredError("CMPAPI_BASE_URL must be set to deliver ads.")
 
-    raise FrequencyNotConfiguredError(
-        "Frequency delivery is not yet implemented. "
-        "The ad has been generated and is available for manual download."
-    )
+    if not app_id:
+        raise FrequencyNotConfiguredError(
+            f"Campaign '{ad_run.campaign.name}' has no Frequency app ID configured."
+        )
+
+    advertiser = ad_run.campaign.advertiser
+    client = advertiser.frequency_client
+    token = advertiser.frequency_token
+
+    if not client or not token:
+        raise FrequencyNotConfiguredError(
+            f"Advertiser '{advertiser.name}' has no Frequency client/token configured."
+        )
+
+    # --- Step 1: Validate ---
+    logger.info("Frequency step 1: validate client=%s", client)
+    validate_data = _validate(base_url, client, token)
+    campaign_id = validate_data["tokenData"]["campaign_id"]
+    logger.info("Frequency validated. campaign_id=%s", campaign_id)
+
+    # --- Step 2: Create draft ---
+    logger.info("Frequency step 2: create draft")
+    draft_data = _create_draft(base_url, app_id)
+    draft_id = draft_data["id"]
+    logger.info("Frequency draft created. draft_id=%s", draft_id)
+
+    # --- Step 3: Upload creative ---
+    logger.info("Frequency step 3: upload creative")
+    duration_secs = _probe_duration(final_ad_bytes)
+    creative_data = _upload_creative(base_url, app_id, campaign_id, final_ad_bytes, duration_secs)
+    logger.info("Frequency creative uploaded. fileName=%s", creative_data.get("fileName"))
+
+    # --- Step 4: Attach creative to draft ---
+    logger.info("Frequency step 4: attach creative to draft")
+    _attach_creative(base_url, app_id, draft_id, creative_data)
+
+    # --- Step 5: Publish ---
+    logger.info("Frequency step 5: publish draft")
+    vast_xml = _publish_draft(base_url, app_id, draft_id)
+    logger.info("Frequency delivery complete for ad_run #%s", ad_run.id)
+
+    return vast_xml
+
+
+# ---------------------------------------------------------------------------
+# Step implementations
+# ---------------------------------------------------------------------------
+
+def _validate(base_url: str, client: str, token: str) -> dict:
+    url = f"{base_url}/campaign/validate/{client}/{token}"
+    resp = requests.get(url, timeout=30)
+    _raise_for_status(resp, "validate")
+    return resp.json()
+
+
+def _create_draft(base_url: str, app_id: str) -> dict:
+    url = f"{base_url}/Application/{app_id}/draft"
+    resp = requests.post(url, json={}, timeout=30)
+    _raise_for_status(resp, "create draft")
+    return resp.json()
+
+
+def _upload_creative(
+    base_url: str,
+    app_id: str,
+    campaign_id,
+    audio_bytes: bytes,
+    duration_secs: int,
+) -> dict:
+    url = f"{base_url}/campaign/{campaign_id}/upload-creative"
+    files = {
+        "file": ("ad.mp3", io.BytesIO(audio_bytes), "audio/mpeg"),
+    }
+    data = {
+        "duration": str(duration_secs),
+        "applicationId": str(app_id),
+    }
+    resp = requests.post(url, files=files, data=data, timeout=120)
+    _raise_for_status(resp, "upload creative")
+    return resp.json()
+
+
+def _attach_creative(base_url: str, app_id: str, draft_id, creative_data: dict) -> None:
+    url = f"{base_url}/application/{app_id}/draft/{draft_id}/creative"
+    body = {
+        "fileName": creative_data["fileName"],
+        "fileUrl": creative_data["fileUrl"],
+        "type": "audio",
+        "serveOption": "random",
+        "fileWeight": 100,
+        "rowIndex": 0,
+    }
+    resp = requests.post(url, json=body, timeout=30)
+    _raise_for_status(resp, "attach creative")
+
+
+def _publish_draft(base_url: str, app_id: str, draft_id) -> str:
+    url = f"{base_url}/application/{app_id}/draft/{draft_id}/publish"
+    today = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+    body = {"schedulePublishDate": today}
+    resp = requests.post(url, json=body, timeout=30)
+    _raise_for_status(resp, "publish draft")
+    # Frequency returns VAST XML as the response body
+    return resp.text
+
+
+# ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
+
+def _raise_for_status(resp: requests.Response, step: str) -> None:
+    if not resp.ok:
+        raise FrequencyDeliveryError(
+            f"Frequency {step} failed: HTTP {resp.status_code} — {resp.text[:500]}"
+        )
+
+
+def _probe_duration(audio_bytes: bytes) -> int:
+    """Return the duration of an MP3 in whole seconds using ffprobe."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "ad.mp3"
+        path.write_bytes(audio_bytes)
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            return int(float(result.stdout.strip()))
+        except (subprocess.CalledProcessError, ValueError) as exc:
+            raise FrequencyDeliveryError(
+                f"Could not determine audio duration: {exc}"
+            ) from exc

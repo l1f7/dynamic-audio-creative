@@ -40,13 +40,10 @@ class BaseConfig:
     # ElevenLabs model
     ELEVENLABS_MODEL = os.environ.get("ELEVENLABS_MODEL", "eleven_monolingual_v1")
 
-    # Frequency ad server (placeholder — not yet configured)
+    # Frequency Campaign Manager API
     FREQUENCY_ENABLED = os.environ.get("FREQUENCY_ENABLED", "false").lower() == "true"
-    FREQUENCY_API_URL = os.environ.get("FREQUENCY_API_URL")
-    FREQUENCY_API_KEY = os.environ.get("FREQUENCY_API_KEY")
-    FREQUENCY_SFTP_HOST = os.environ.get("FREQUENCY_SFTP_HOST")
-    FREQUENCY_SFTP_USER = os.environ.get("FREQUENCY_SFTP_USER")
-    FREQUENCY_SFTP_KEY = os.environ.get("FREQUENCY_SFTP_KEY")
+    CMPAPI_BASE_URL = os.environ.get("CMPAPI_BASE_URL")   # e.g. https://cmpapi.example.com
+    # Note: app ID is configured per-campaign via Campaign.frequency_app_id
 
 
 class DevelopmentConfig(BaseConfig):

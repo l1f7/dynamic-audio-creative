@@ -103,6 +103,9 @@ class CampaignForm(FlaskForm):
         "Cron Schedule (leave blank for manual only)", validators=[Optional()]
     )
 
+    # Delivery
+    frequency_app_id = StringField("Frequency App ID", validators=[Optional()])
+
 
 class AdminUserCreateForm(FlaskForm):
     email = StringField(

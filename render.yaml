@@ -39,6 +39,10 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
+      - key: FREQUENCY_ENABLED
+        sync: false
+      - key: CMPAPI_BASE_URL
+        sync: false
 
 databases:
   - name: dynamic-audio-db

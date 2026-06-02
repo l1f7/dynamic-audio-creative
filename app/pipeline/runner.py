@@ -81,7 +81,29 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
         _update_status(ad_run, "uploading")
         _save_outputs(ad_run, vo_bytes, final_bytes)
 
-        # 7. Done
+        # 7. Deliver to Frequency (if enabled and app ID is set for this campaign)
+        if campaign.delivery_enabled and campaign.frequency_app_id:
+            from app.delivery.frequency import (
+                deliver_ad,
+                is_delivery_available,
+                FrequencyDeliveryError,
+                FrequencyNotConfiguredError,
+            )
+            if is_delivery_available():
+                _update_status(ad_run, "delivering")
+                try:
+                    vast_xml = deliver_ad(ad_run, final_bytes)
+                    ad_run.vast_response = vast_xml
+                    ad_run.delivered_at = datetime.now(timezone.utc)
+                    ad_run.delivery_reference = "frequency"
+                    db.session.commit()
+                    logger.info("Delivered to Frequency for run #%d", ad_run.id)
+                except (FrequencyDeliveryError, FrequencyNotConfiguredError) as exc:
+                    ad_run.delivery_error = str(exc)
+                    db.session.commit()
+                    logger.error("Frequency delivery failed for run #%d: %s", ad_run.id, exc)
+
+        # 8. Done
         ad_run.status = "complete"
         ad_run.completed_at = datetime.now(timezone.utc)
         db.session.commit()
