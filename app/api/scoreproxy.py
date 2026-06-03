@@ -17,7 +17,16 @@ from datetime import datetime, timezone
 
 from flask import jsonify, request
 
+from flask import current_app
+
 from app.api import api_bp
+
+
+def _check_secret():
+    expected = current_app.config.get("SCOREPROXY_SECRET")
+    if expected and request.args.get("secret") != expected:
+        return jsonify({"error": "Unauthorized"}), 401
+    return None
 
 API_KEY = os.environ.get("API_FOOTBALL_KEY")
 API_BASE = "https://v3.football.api-sports.io"
@@ -211,6 +220,9 @@ def _fetch_top_scorers():
 
 @api_bp.route("/standings")
 def standings():
+    auth_error = _check_secret()
+    if auth_error:
+        return auth_error
     if _is_testing():
         return jsonify({"standings": FAKE_STANDINGS})
 
@@ -242,6 +254,9 @@ def standings():
 
 @api_bp.route("/scores")
 def scores():
+    auth_error = _check_secret()
+    if auth_error:
+        return auth_error
     if _is_testing():
         return jsonify({"fixtures": FAKE_FIXTURES})
 
@@ -251,6 +266,9 @@ def scores():
 
 @api_bp.route("/live")
 def live():
+    auth_error = _check_secret()
+    if auth_error:
+        return auth_error
     if _is_testing():
         return jsonify({"live": FAKE_LIVE})
 
@@ -288,6 +306,9 @@ def live():
 
 @api_bp.route("/today")
 def today():
+    auth_error = _check_secret()
+    if auth_error:
+        return auth_error
     today_date = datetime.now(timezone.utc).date().isoformat()
 
     if _is_testing():
@@ -310,6 +331,9 @@ def today():
 
 @api_bp.route("/update")
 def update():
+    auth_error = _check_secret()
+    if auth_error:
+        return auth_error
     if _is_testing():
         live_data = FAKE_LIVE
         fixtures_data = FAKE_FIXTURES
