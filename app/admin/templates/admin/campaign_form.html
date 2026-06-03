@@ -166,6 +166,25 @@
         </div>
     </div>
 
+    <!-- Ad Tags -->
+    <div class="card mb-3">
+        <div class="card-header">Ad Tags</div>
+        <div class="card-body">
+            <p class="text-muted small">Paste in the exact outro/tag text. One per row — the pipeline will pick one at random each run.</p>
+            <div id="ad-tag-rows">
+                {% if editing and campaign and campaign.ad_tags %}
+                    {% for tag in campaign.ad_tags %}
+                    <div class="d-flex mb-2 ad-tag-row">
+                        <textarea name="ad_tag_{{ loop.index0 }}" class="form-control form-control-sm me-2" rows="2" placeholder="Paste exact tag/outro text here…">{{ tag }}</textarea>
+                        <button type="button" class="btn btn-sm btn-outline-danger align-self-start" onclick="this.closest('.ad-tag-row').remove(); _renumberAdTags()">Remove</button>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="add-ad-tag">+ Add Tag</button>
+        </div>
+    </div>
+
     <!-- Script -->
     <div class="card mb-3">
         <div class="card-header">Script Settings</div>
@@ -224,6 +243,25 @@
 
 {% block scripts %}
 <script>
+function _renumberAdTags() {
+    document.querySelectorAll('#ad-tag-rows .ad-tag-row textarea').forEach(function(ta, i) {
+        ta.name = 'ad_tag_' + i;
+    });
+}
+
+document.getElementById('add-ad-tag').addEventListener('click', function() {
+    const container = document.getElementById('ad-tag-rows');
+    const idx = container.querySelectorAll('.ad-tag-row').length;
+    const row = document.createElement('div');
+    row.className = 'd-flex mb-2 ad-tag-row';
+    row.innerHTML = `
+        <textarea name="ad_tag_${idx}" class="form-control form-control-sm me-2" rows="2" placeholder="Paste exact tag/outro text here…"></textarea>
+        <button type="button" class="btn btn-sm btn-outline-danger align-self-start" onclick="this.closest('.ad-tag-row').remove(); _renumberAdTags()">Remove</button>
+    `;
+    container.appendChild(row);
+    row.querySelector('textarea').focus();
+});
+
 document.getElementById('add-pron-row').addEventListener('click', function() {
     const container = document.getElementById('pronunciation-rows');
     const idx = container.querySelectorAll('.pron-row').length;

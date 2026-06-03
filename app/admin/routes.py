@@ -357,6 +357,9 @@ def campaign_new():
         # Save pronunciation entries from form
         _save_pronunciation_entries(campaign, request.form)
 
+        # Save ad tags from form
+        _save_ad_tags(campaign, request.form)
+
         flash(f"Campaign '{campaign.name}' created.", "success")
         return redirect(url_for("admin.campaign_detail", campaign_id=campaign.id))
 
@@ -522,6 +525,9 @@ def campaign_edit(campaign_id):
         # Update pronunciation entries
         _save_pronunciation_entries(campaign, request.form)
 
+        # Update ad tags
+        _save_ad_tags(campaign, request.form)
+
         flash(f"Campaign '{campaign.name}' updated.", "success")
         return redirect(url_for("admin.campaign_detail", campaign_id=campaign.id))
 
@@ -577,6 +583,25 @@ def _save_pronunciation_entries(campaign, form_data):
             db.session.add(entry)
         i += 1
 
+    db.session.commit()
+
+
+def _save_ad_tags(campaign, form_data):
+    """Parse ad tag textarea rows from the form and save them.
+
+    Form fields are named: ad_tag_0, ad_tag_1, ...
+    """
+    tags = []
+    i = 0
+    while True:
+        tag = form_data.get(f"ad_tag_{i}", "").strip()
+        if not tag and f"ad_tag_{i}" not in form_data:
+            break
+        if tag:
+            tags.append(tag)
+        i += 1
+
+    campaign.ad_tags = tags or None
     db.session.commit()
 
 

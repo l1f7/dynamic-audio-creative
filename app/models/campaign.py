@@ -60,6 +60,7 @@ class Campaign(db.Model):
     prompt_template = db.Column(db.Text, nullable=True)
     target_seconds = db.Column(db.Integer, default=30)
     target_words = db.Column(db.Integer, default=75)
+    ad_tags = db.Column(db.JSON, nullable=True)  # list of exact outro/tag strings
 
     # Schedule
     cron_schedule = db.Column(db.String(100), nullable=True)

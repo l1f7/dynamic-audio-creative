@@ -15,7 +15,9 @@ SYSTEM_MESSAGE = (
     "will be read aloud — nothing else. Never include introductions, "
     "commentary, questions, sign-offs, or offers to revise. Never use "
     "markdown, bullet points, headers, bold, italics, horizontal rules, "
-    "or any special characters. Just plain spoken-word text."
+    "or any special characters. Just plain spoken-word text. "
+    "CRITICAL: respect the word limit given in the prompt — going over it "
+    "will cause the ad to be cut off on air."
 )
 
 
@@ -34,7 +36,13 @@ def generate_script(prompt_template: str, template_vars: dict) -> str:
     """
     user_message = prompt_template.format(**template_vars)
 
-    logger.info("Generating script via Claude...")
+    target_words = int(template_vars.get("target_words", 75))
+    # Allow 1.5× headroom in tokens so Claude isn't cut mid-sentence by the
+    # API limit, then we hard-truncate below.
+    max_tokens = max(100, int(target_words * 2))
+
+    logger.info("Generating script via Claude (target_words=%d, max_tokens=%d)...",
+                target_words, max_tokens)
     client = anthropic.Anthropic(
         api_key=current_app.config["ANTHROPIC_API_KEY"]
     )
@@ -42,7 +50,7 @@ def generate_script(prompt_template: str, template_vars: dict) -> str:
     try:
         response = client.messages.create(
             model=current_app.config["CLAUDE_MODEL"],
-            max_tokens=300,
+            max_tokens=max_tokens,
             system=SYSTEM_MESSAGE,
             messages=[{"role": "user", "content": user_message}],
         )
@@ -51,8 +59,33 @@ def generate_script(prompt_template: str, template_vars: dict) -> str:
 
     script = response.content[0].text.strip()
     script = _clean_script(script)
-    logger.info("Script generated (%d chars)", len(script))
+    script = _truncate_to_word_limit(script, target_words)
+    logger.info("Script generated (%d words, %d chars)",
+                len(script.split()), len(script))
     return script
+
+
+def _truncate_to_word_limit(text: str, max_words: int) -> str:
+    """Hard-truncate script to max_words at the last complete sentence boundary."""
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+
+    # Take the first max_words words, then back up to the last sentence end.
+    truncated = " ".join(words[:max_words])
+    # Find the last sentence-ending punctuation within the truncated text.
+    for punct in (".", "!", "?"):
+        pos = truncated.rfind(punct)
+        if pos != -1:
+            truncated = truncated[: pos + 1]
+            break
+
+    logger.warning(
+        "Script truncated from %d to %d words to enforce word limit.",
+        len(words),
+        len(truncated.split()),
+    )
+    return truncated.strip()
 
 
 def _clean_script(text: str) -> str:

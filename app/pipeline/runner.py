@@ -6,6 +6,7 @@ updates the AdRun status at each step.
 
 import logging
 import os
+import random
 from datetime import datetime, timezone
 
 from app.extensions import db
@@ -176,6 +177,25 @@ def _build_template_vars(campaign: Campaign, feed_data: dict) -> dict:
         pronunciation_section = ""
         pronunciation_instruction = ""
 
+    # Pick one ad tag at random (if any are configured)
+    tags = campaign.ad_tags or []
+    ad_tag = random.choice(tags) if tags else ""
+    ad_tag_instruction = (
+        f'- End the ad with this exact tag verbatim: "{ad_tag}"\n'
+        if ad_tag
+        else ""
+    )
+
+    secs = campaign.target_seconds
+    if secs <= 20:
+        fixture_mention_guidance = "No time for more — go straight to the transition"
+    elif secs <= 30:
+        fixture_mention_guidance = "Briefly mention one more result if it fits naturally"
+    elif secs <= 45:
+        fixture_mention_guidance = "Mention 1-2 more matches or a top-scorer highlight if time allows"
+    else:
+        fixture_mention_guidance = "Mention 2-3 more matches and a top-scorer highlight"
+
     return {
         **feed_data,
         "advertiser_name": advertiser.name,
@@ -184,8 +204,11 @@ def _build_template_vars(campaign: Campaign, feed_data: dict) -> dict:
         "advertiser_cta": campaign.cta or "",
         "seasonal_hook": campaign.seasonal_hook or "",
         "target_city": campaign.target_city or "",
-        "target_seconds": campaign.target_seconds,
+        "target_seconds": secs,
         "target_words": campaign.target_words,
+        "fixture_mention_guidance": fixture_mention_guidance,
+        "ad_tag": ad_tag,
+        "ad_tag_instruction": ad_tag_instruction,
         "pronunciation_section": pronunciation_section,
         "pronunciation_instruction": pronunciation_instruction,
     }

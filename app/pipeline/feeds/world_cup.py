@@ -42,21 +42,17 @@ TODAY'S MATCHES:
 TOP SCORERS:
 {top_scorers_formatted}
 
-ADVERTISER:
-- Name: {advertiser_name}
-- Description: {advertiser_description}
-- Location: {target_city}
-- Tagline: {advertiser_tagline}
-- Call to action: {advertiser_cta}
+AD TAG (use this verbatim at the end):
+{ad_tag}
 
 {pronunciation_section}\
 {tone_guidance}\
 INSTRUCTIONS:
-- Write a natural, conversational script approximately {target_seconds} seconds long when read aloud (approximately {target_words} words)
+- Write a natural, conversational script of STRICTLY NO MORE THAN {target_words} words (= {target_seconds} seconds at normal pace) — going over will cut the ad off on air
 - Open with today's World Cup action — lead with the most exciting result or live match
-- Mention 1-2 more matches or a top-scorer highlight if time allows
-- Write a smooth transition from the football news to the advertiser
-- Close with the advertiser name, tagline, and call to action
+- {fixture_mention_guidance}
+- Write a smooth transition from the World Cup coverage into the ad tag
+- End the script with the ad tag above, word for word — do not alter it
 - Do not use any formatting, headers, or stage directions — plain flowing text only
 - Write as if an enthusiastic local radio host is speaking
 {pronunciation_instruction}\
