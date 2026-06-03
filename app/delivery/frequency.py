@@ -97,6 +97,9 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
             "Frequency validate response missing 'authToken'. Cannot authenticate subsequent steps."
         )
 
+    vast_urls = {v["version"]: v["url"] for v in validate_data.get("vastUrls", [])}
+    for version, url in vast_urls.items():
+        logger.info("[Frequency] VAST %s: %s", version, url)
     logger.info("[Frequency] Step 1 OK — campaign_id=%s  authToken=set", campaign_id)
 
     auth_headers = {"Authorization": f"Bearer {auth_token}"}

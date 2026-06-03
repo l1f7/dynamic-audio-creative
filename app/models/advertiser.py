@@ -15,7 +15,7 @@ class Advertiser(db.Model):
 
     # Frequency ad server credentials
     frequency_client = db.Column(db.String(100), nullable=True)
-    frequency_token = db.Column(db.String(200), nullable=True)
+    frequency_token = db.Column(db.Text, nullable=True)
 
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     updated_at = db.Column(db.DateTime, onupdate=db.func.now())
