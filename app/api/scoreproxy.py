@@ -5,6 +5,7 @@ Routes (all under /api/v1/):
   GET /scores      — all fixtures with scores
   GET /live        — currently live matches
   GET /today       — today's fixtures + top scorers
+  GET /yesterday   — completed fixtures from the previous 24 hours
   GET /update      — live + recent scores + standings + top scorers
 
 Add ?testing=true to any route to get fake data without hitting the API.
@@ -13,7 +14,7 @@ Requires API_FOOTBALL_KEY environment variable.
 
 import os
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import jsonify, request
 
@@ -327,6 +328,28 @@ def today():
         top_scorers = _fetch_top_scorers()
 
     return jsonify({"date": today_date, "fixtures": fixtures, "top_scorers": top_scorers})
+
+
+@api_bp.route("/yesterday")
+def yesterday():
+    auth_error = _check_secret()
+    if auth_error:
+        return auth_error
+    yesterday_date = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
+
+    if _is_testing():
+        yesterday_date = "2026-06-16"
+        fixtures = [f for f in FAKE_FIXTURES if f["date"].startswith(yesterday_date)]
+    else:
+        raw = _get("/fixtures", {"league": LEAGUE_ID, "season": SEASON, "date": yesterday_date})
+        fixtures = [_parse_fixture(f) for f in raw.get("response", [])]
+
+        finished_ids = [f["fixture_id"] for f in fixtures if f["status_short"] == "FT"]
+        scorers_by_id = _fetch_goal_scorers(finished_ids)
+        for f in fixtures:
+            f["goal_scorers"] = scorers_by_id.get(f["fixture_id"], [])
+
+    return jsonify({"date": yesterday_date, "fixtures": fixtures})
 
 
 @api_bp.route("/update")
