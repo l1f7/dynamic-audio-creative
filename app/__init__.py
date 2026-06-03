@@ -46,4 +46,13 @@ def create_app(config_name=None):
         from flask import redirect, url_for
         return redirect(url_for("admin.dashboard"))
 
+    # CLI commands
+    import click
+
+    @app.cli.command("run-due-campaigns")
+    def run_due_campaigns_cmd():
+        """Run all campaigns whose cron schedule is due."""
+        from app.jobs.scheduler import run_due_campaigns
+        run_due_campaigns()
+
     return app
