@@ -7,8 +7,6 @@ needed — the response is already structured JSON.
 
 import logging
 from datetime import datetime, timezone
-from urllib.parse import urlparse, urlunparse
-
 import requests
 
 from app.pipeline.exceptions import FeedFetchError
@@ -60,31 +58,22 @@ INSTRUCTIONS:
 """
 
 
-def _build_today_url(feed_url: str) -> str:
-    """Append /today to the feed URL path, preserving any query string."""
-    parsed = urlparse(feed_url.rstrip("/"))
-    if not parsed.path.endswith("/today"):
-        parsed = parsed._replace(path=parsed.path + "/today")
-    return urlunparse(parsed)
-
-
 class WorldCupFeed(BaseFeed):
-    """Fetches today's World Cup fixtures from the /today proxy endpoint."""
+    """Fetches World Cup fixtures from the configured feed URL."""
 
     def fetch(self, campaign) -> dict:
         feed_url = campaign.feed_url
         if not feed_url:
             raise FeedFetchError("No feed URL configured for this campaign.")
 
-        url = _build_today_url(feed_url)
-
-        logger.info("Fetching World Cup today data from %s...", url)
+        logger.info("Fetching World Cup data from %s...", feed_url)
 
         try:
-            resp = requests.get(url, timeout=15)
+            resp = requests.get(feed_url, timeout=15)
             resp.raise_for_status()
         except requests.RequestException as exc:
             raise FeedFetchError(f"World Cup feed fetch failed: {exc}") from exc
+
 
         try:
             data = resp.json()
