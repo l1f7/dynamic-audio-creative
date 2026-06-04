@@ -59,33 +59,47 @@ def generate_script(prompt_template: str, template_vars: dict) -> str:
 
     script = response.content[0].text.strip()
     script = _clean_script(script)
-    script = _truncate_to_word_limit(script, target_words)
+    ad_tag = template_vars.get("ad_tag", "").strip()
+    script = _truncate_to_word_limit(script, target_words, ad_tag)
     logger.info("Script generated (%d words, %d chars)",
                 len(script.split()), len(script))
     return script
 
 
-def _truncate_to_word_limit(text: str, max_words: int) -> str:
-    """Hard-truncate script to max_words at the last complete sentence boundary."""
-    words = text.split()
-    if len(words) <= max_words:
-        return text
+def _truncate_to_word_limit(text: str, max_words: int, protected_tag: str = "") -> str:
+    """Hard-truncate script to max_words, always preserving the ad tag at the end.
 
-    # Take the first max_words words, then back up to the last sentence end.
-    truncated = " ".join(words[:max_words])
-    # Find the last sentence-ending punctuation within the truncated text.
-    for punct in (".", "!", "?"):
-        pos = truncated.rfind(punct)
-        if pos != -1:
-            truncated = truncated[: pos + 1]
-            break
+    If the script doesn't already end with the tag, the body is truncated to
+    make room and the tag is appended. This guarantees the tag is never cut.
+    """
+    tag_words = len(protected_tag.split()) if protected_tag else 0
+    body_limit = max_words - tag_words
 
-    logger.warning(
-        "Script truncated from %d to %d words to enforce word limit.",
-        len(words),
-        len(truncated.split()),
-    )
-    return truncated.strip()
+    # Strip the tag from the end of the script if Claude already included it,
+    # so we can truncate the body independently.
+    if protected_tag and text.endswith(protected_tag):
+        body = text[: -len(protected_tag)].strip()
+    else:
+        body = text
+
+    body_word_list = body.split()
+    if len(body_word_list) > body_limit:
+        truncated_body = " ".join(body_word_list[:body_limit])
+        for punct in (".", "!", "?"):
+            pos = truncated_body.rfind(punct)
+            if pos != -1:
+                truncated_body = truncated_body[: pos + 1]
+                break
+        logger.warning(
+            "Script body truncated from %d to %d words to enforce word limit.",
+            len(body_word_list),
+            len(truncated_body.split()),
+        )
+        body = truncated_body
+
+    if protected_tag:
+        return f"{body.strip()} {protected_tag}".strip()
+    return body.strip()
 
 
 def _clean_script(text: str) -> str:
