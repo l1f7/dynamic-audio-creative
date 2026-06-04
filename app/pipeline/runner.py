@@ -64,6 +64,10 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
         # 4. Generate voiceover
         _update_status(ad_run, "generating_voiceover")
         voice_id = campaign.effective_voice_id
+        logger.info("Using voice: preset=%s custom=%s resolved_id=%s",
+                    campaign.voice_preset, campaign.voice_custom_id, voice_id)
+        if not voice_id:
+            raise PipelineError("No voice ID resolved — check campaign voice settings.")
         vo_bytes = generate_voiceover(script, voice_id)
 
         # 5. Mix with music bed
@@ -180,11 +184,8 @@ def _build_template_vars(campaign: Campaign, feed_data: dict) -> dict:
     # Pick one ad tag at random (if any are configured)
     tags = campaign.ad_tags or []
     ad_tag = random.choice(tags) if tags else ""
-    ad_tag_instruction = (
-        f'- End the ad with this exact tag verbatim: "{ad_tag}"\n'
-        if ad_tag
-        else ""
-    )
+    tag_words = len(ad_tag.split()) if ad_tag else 0
+    body_words = max(10, campaign.target_words - tag_words)
 
     secs = campaign.target_seconds
     if secs <= 20:
@@ -206,9 +207,9 @@ def _build_template_vars(campaign: Campaign, feed_data: dict) -> dict:
         "target_city": campaign.target_city or "",
         "target_seconds": secs,
         "target_words": campaign.target_words,
+        "body_words": body_words,
         "fixture_mention_guidance": fixture_mention_guidance,
         "ad_tag": ad_tag,
-        "ad_tag_instruction": ad_tag_instruction,
         "pronunciation_section": pronunciation_section,
         "pronunciation_instruction": pronunciation_instruction,
     }
