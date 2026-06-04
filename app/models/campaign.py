@@ -93,8 +93,9 @@ class Campaign(db.Model):
 
         Custom ID takes precedence over preset selection.
         """
-        if self.voice_custom_id:
-            return self.voice_custom_id
+        custom = (self.voice_custom_id or "").strip()
+        if custom:
+            return custom
         if self.voice_preset:
             return PRESET_VOICES.get(self.voice_preset)
         return PRESET_VOICES.get("Brian")  # default

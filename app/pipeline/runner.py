@@ -150,6 +150,94 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
     return ad_run
 
 
+def rerun_from_script(source_run_id: int, script: str) -> AdRun:
+    """Create a new run from an edited script, then voiceover → mix → deliver.
+
+    Copies the feed snapshot and campaign settings from the source run.
+    Returns the new AdRun.
+    """
+    source = db.session.get(AdRun, source_run_id)
+    if not source:
+        raise ValueError(f"Run {source_run_id} not found")
+    campaign = source.campaign
+
+    new_run = AdRun(
+        campaign_id=campaign.id,
+        triggered_by="manual",
+        status="pending",
+        script_text=script,
+        feed_data_snapshot=source.feed_data_snapshot,
+    )
+    db.session.add(new_run)
+    db.session.commit()
+
+    try:
+        _update_status(new_run, "generating_voiceover")
+        voice_id = campaign.effective_voice_id
+        logger.info("Rerun #%d (from #%d) using voice: preset=%s custom=%s resolved_id=%s",
+                    new_run.id, source_run_id, campaign.voice_preset, campaign.voice_custom_id, voice_id)
+        if not voice_id:
+            raise PipelineError("No voice ID resolved — check campaign voice settings.")
+        vo_bytes = generate_voiceover(script, voice_id)
+
+        _update_status(new_run, "mixing")
+        music_bytes = _get_music_bed(campaign)
+        final_bytes = mix_audio(
+            music_bed_bytes=music_bytes,
+            voiceover_bytes=vo_bytes,
+            intro_seconds=campaign.intro_seconds,
+            outro_seconds=campaign.outro_seconds,
+            duck_volume=campaign.duck_volume,
+            duck_fade=campaign.duck_fade,
+        )
+
+        _update_status(new_run, "uploading")
+        _save_outputs(new_run, vo_bytes, final_bytes)
+
+        # Deliver to Frequency if configured
+        if campaign.delivery_enabled and campaign.frequency_app_id:
+            from app.delivery.frequency import (
+                deliver_ad,
+                is_delivery_available,
+                FrequencyDeliveryError,
+                FrequencyNotConfiguredError,
+            )
+            if is_delivery_available():
+                _update_status(new_run, "delivering")
+                try:
+                    vast_xml = deliver_ad(new_run, final_bytes)
+                    new_run.vast_response = vast_xml
+                    new_run.delivered_at = datetime.now(timezone.utc)
+                    new_run.delivery_reference = "frequency"
+                    db.session.commit()
+                    logger.info("[Frequency] Delivered for rerun #%d", new_run.id)
+                except (FrequencyDeliveryError, FrequencyNotConfiguredError) as exc:
+                    new_run.delivery_error = str(exc)
+                    db.session.commit()
+                    logger.error("[Frequency] Delivery failed for rerun #%d: %s", new_run.id, exc)
+
+        new_run.status = "complete"
+        new_run.completed_at = datetime.now(timezone.utc)
+        db.session.commit()
+        logger.info("Rerun complete — new run #%d (source #%d)", new_run.id, source_run_id)
+
+    except PipelineError as exc:
+        new_run.status = "failed"
+        new_run.error_message = str(exc)
+        new_run.completed_at = datetime.now(timezone.utc)
+        db.session.commit()
+        logger.error("Rerun failed for new run #%d: %s", new_run.id, exc)
+
+    except Exception as exc:
+        new_run.status = "failed"
+        new_run.error_message = f"Unexpected error: {exc}"
+        new_run.completed_at = datetime.now(timezone.utc)
+        db.session.commit()
+        logger.exception("Unexpected rerun error for new run #%d", new_run.id)
+
+    return new_run
+
+
 def _update_status(ad_run: AdRun, status: str):
     """Update run status and commit."""
     ad_run.status = status

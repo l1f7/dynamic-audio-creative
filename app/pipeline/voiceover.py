@@ -28,7 +28,11 @@ def generate_voiceover(script: str, voice_id: str) -> bytes:
         api_key=current_app.config["ELEVENLABS_API_KEY"]
     )
 
-    logger.info("Generating voiceover (voice_id=%s)...", voice_id)
+    voice_id = (voice_id or "").strip()
+    if not voice_id:
+        raise VoiceoverGenerationError("voice_id is empty — check campaign voice settings.")
+
+    logger.info("Generating voiceover — sending voice_id=%r to ElevenLabs", voice_id)
 
     try:
         audio_iterator = client.text_to_speech.convert(

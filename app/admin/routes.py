@@ -337,7 +337,7 @@ def campaign_new():
             cta=form.cta.data or None,
             seasonal_hook=form.seasonal_hook.data or None,
             voice_preset=form.voice_preset.data or None,
-            voice_custom_id=form.voice_custom_id.data or None,
+            voice_custom_id=form.voice_custom_id.data.strip() or None,
             intro_seconds=form.intro_seconds.data,
             outro_seconds=form.outro_seconds.data,
             duck_volume=form.duck_volume.data,
@@ -406,6 +406,27 @@ def run_detail(run_id):
     """Show details of an ad run — script, status, audio player."""
     ad_run = AdRun.query.get_or_404(run_id)
     return render_template("admin/run_detail.html", run=ad_run)
+
+
+@admin_bp.route("/runs/<int:run_id>/regenerate", methods=["POST"])
+@login_required
+def run_regenerate(run_id):
+    """Re-generate voiceover + mix from an edited script."""
+    ad_run = AdRun.query.get_or_404(run_id)
+    script = request.form.get("script", "").strip()
+    if not script:
+        flash("Script cannot be empty.", "danger")
+        return redirect(url_for("admin.run_detail", run_id=run_id))
+
+    from app.pipeline.runner import rerun_from_script
+    new_run = rerun_from_script(run_id, script)
+
+    if new_run.status == "complete":
+        flash("New run created, audio regenerated, and delivered to Frequency.", "success")
+    else:
+        flash(f"Run #{new_run.id} failed: {new_run.error_message}", "danger")
+
+    return redirect(url_for("admin.run_detail", run_id=new_run.id))
 
 
 @admin_bp.route("/runs/<int:run_id>/audio")
@@ -510,8 +531,7 @@ def campaign_edit(campaign_id):
             campaign.feed_url = None
         if not campaign.voice_preset:
             campaign.voice_preset = None
-        if not campaign.voice_custom_id:
-            campaign.voice_custom_id = None
+        campaign.voice_custom_id = (campaign.voice_custom_id or "").strip() or None
         if not campaign.prompt_template:
             campaign.prompt_template = None
         if not campaign.cron_schedule:
