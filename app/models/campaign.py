@@ -58,6 +58,7 @@ class Campaign(db.Model):
 
     # Script settings
     prompt_template = db.Column(db.Text, nullable=True)
+    fallback_script = db.Column(db.Text, nullable=True)  # used when feed has no data or errors
     target_seconds = db.Column(db.Integer, default=30)
     target_words = db.Column(db.Integer, default=75)
     ad_tags = db.Column(db.JSON, nullable=True)  # list of exact outro/tag strings

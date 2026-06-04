@@ -97,6 +97,7 @@ class CampaignForm(FlaskForm):
 
     # Script
     prompt_template = TextAreaField("Prompt Template (leave blank for default)", validators=[Optional()])
+    fallback_script = TextAreaField("Fallback Script (used when feed has no data or errors)", validators=[Optional()])
     target_seconds = IntegerField("Target Length (seconds)", default=30)
     target_words = IntegerField("Target Words", default=75)
 

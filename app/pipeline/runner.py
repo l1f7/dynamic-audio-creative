@@ -15,7 +15,7 @@ from app.pipeline.feeds import get_feed
 from app.pipeline.script_gen import generate_script
 from app.pipeline.voiceover import generate_voiceover
 from app.pipeline.mixer import mix_audio
-from app.pipeline.exceptions import PipelineError
+from app.pipeline.exceptions import FeedFetchError, PipelineError
 
 logger = logging.getLogger(__name__)
 
@@ -44,22 +44,33 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
     db.session.commit()
 
     try:
-        # 1. Fetch feed data
+        # 1. Fetch feed data + generate script (fallback if feed fails or is empty)
         _update_status(ad_run, "fetching_data")
         feed = get_feed(campaign.feed_type)
-        feed_data = feed.fetch(campaign)
-        ad_run.feed_data_snapshot = feed_data
-        db.session.commit()
+        try:
+            feed_data = feed.fetch(campaign)
+            ad_run.feed_data_snapshot = feed_data
+            db.session.commit()
 
-        # 2. Build template vars
-        template_vars = _build_template_vars(campaign, feed_data)
+            # 2. Build template vars
+            template_vars = _build_template_vars(campaign, feed_data)
 
-        # 3. Generate script
-        _update_status(ad_run, "generating_script")
-        prompt_template = campaign.prompt_template or feed.default_prompt_template()
-        script = generate_script(prompt_template, template_vars)
-        ad_run.script_text = script
-        db.session.commit()
+            # 3. Generate script
+            _update_status(ad_run, "generating_script")
+            prompt_template = campaign.prompt_template or feed.default_prompt_template()
+            script = generate_script(prompt_template, template_vars)
+            ad_run.script_text = script
+            db.session.commit()
+
+        except FeedFetchError as exc:
+            if not campaign.fallback_script:
+                raise
+            logger.warning(
+                "Run #%d: feed failed (%s) — using fallback script", ad_run.id, exc
+            )
+            script = campaign.fallback_script
+            ad_run.script_text = script
+            db.session.commit()
 
         # 4. Generate voiceover
         _update_status(ad_run, "generating_voiceover")

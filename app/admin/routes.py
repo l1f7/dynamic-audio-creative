@@ -343,6 +343,7 @@ def campaign_new():
             duck_volume=form.duck_volume.data,
             duck_fade=form.duck_fade.data,
             prompt_template=form.prompt_template.data or None,
+            fallback_script=form.fallback_script.data or None,
             target_seconds=form.target_seconds.data,
             target_words=form.target_words.data,
             cron_schedule=form.cron_schedule.data or None,
@@ -534,6 +535,8 @@ def campaign_edit(campaign_id):
         campaign.voice_custom_id = (campaign.voice_custom_id or "").strip() or None
         if not campaign.prompt_template:
             campaign.prompt_template = None
+        if not campaign.fallback_script:
+            campaign.fallback_script = None
         if not campaign.cron_schedule:
             campaign.cron_schedule = None
 

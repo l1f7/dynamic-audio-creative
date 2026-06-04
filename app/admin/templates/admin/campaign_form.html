@@ -203,6 +203,11 @@
                 <label class="form-label">Custom Prompt Template</label>
                 {{ form.prompt_template(class="form-control", rows=6, placeholder="Leave blank to use the default template for this feed type. Use {placeholders} for data fields.") }}
             </div>
+            <div class="mb-3">
+                <label class="form-label">Fallback Script</label>
+                {{ form.fallback_script(class="form-control", rows=5, placeholder="Static script to use when the feed has no data (e.g. no matches today) or returns an error. Leave blank to fail the run instead.") }}
+                <small class="text-muted">If set, this script is used as-is — voiceover and delivery still run normally.</small>
+            </div>
         </div>
     </div>
 
