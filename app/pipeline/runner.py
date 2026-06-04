@@ -91,6 +91,7 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
             outro_seconds=campaign.outro_seconds,
             duck_volume=campaign.duck_volume,
             duck_fade=campaign.duck_fade,
+            target_seconds=campaign.target_seconds,
         )
 
         # 6. Save outputs
@@ -200,6 +201,7 @@ def rerun_from_script(source_run_id: int, script: str) -> AdRun:
             outro_seconds=campaign.outro_seconds,
             duck_volume=campaign.duck_volume,
             duck_fade=campaign.duck_fade,
+            target_seconds=campaign.target_seconds,
         )
 
         _update_status(new_run, "uploading")
