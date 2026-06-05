@@ -11,7 +11,7 @@ from app.pipeline.exceptions import VoiceoverGenerationError
 logger = logging.getLogger(__name__)
 
 
-def generate_voiceover(script: str, voice_id: str) -> bytes:
+def generate_voiceover(script: str, voice_id: str, is_custom: bool = False) -> bytes:
     """Generate voiceover MP3 from script text.
 
     Args:
@@ -32,13 +32,19 @@ def generate_voiceover(script: str, voice_id: str) -> bytes:
     if not voice_id:
         raise VoiceoverGenerationError("voice_id is empty — check campaign voice settings.")
 
-    logger.info("Generating voiceover — sending voice_id=%r to ElevenLabs", voice_id)
+    if is_custom:
+        model_id = current_app.config["ELEVENLABS_CUSTOM_MODEL"]
+    else:
+        model_id = current_app.config["ELEVENLABS_MODEL"]
+
+    logger.info("Generating voiceover — voice_id=%r  model=%s  custom=%s",
+                voice_id, model_id, is_custom)
 
     try:
         audio_iterator = client.text_to_speech.convert(
             voice_id=voice_id,
             text=script,
-            model_id=current_app.config["ELEVENLABS_MODEL"],
+            model_id=model_id,
         )
     except Exception as exc:
         raise VoiceoverGenerationError(

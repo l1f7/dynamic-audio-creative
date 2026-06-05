@@ -75,11 +75,12 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
         # 4. Generate voiceover
         _update_status(ad_run, "generating_voiceover")
         voice_id = campaign.effective_voice_id
+        is_custom = bool((campaign.voice_custom_id or "").strip())
         logger.info("Using voice: preset=%s custom=%s resolved_id=%s",
                     campaign.voice_preset, campaign.voice_custom_id, voice_id)
         if not voice_id:
             raise PipelineError("No voice ID resolved — check campaign voice settings.")
-        vo_bytes = generate_voiceover(script, voice_id)
+        vo_bytes = generate_voiceover(script, voice_id, is_custom=is_custom)
 
         # 5. Mix with music bed
         _update_status(ad_run, "mixing")
@@ -186,11 +187,12 @@ def rerun_from_script(source_run_id: int, script: str) -> AdRun:
     try:
         _update_status(new_run, "generating_voiceover")
         voice_id = campaign.effective_voice_id
+        is_custom = bool((campaign.voice_custom_id or "").strip())
         logger.info("Rerun #%d (from #%d) using voice: preset=%s custom=%s resolved_id=%s",
                     new_run.id, source_run_id, campaign.voice_preset, campaign.voice_custom_id, voice_id)
         if not voice_id:
             raise PipelineError("No voice ID resolved — check campaign voice settings.")
-        vo_bytes = generate_voiceover(script, voice_id)
+        vo_bytes = generate_voiceover(script, voice_id, is_custom=is_custom)
 
         _update_status(new_run, "mixing")
         music_bytes = _get_music_bed(campaign)

@@ -37,8 +37,10 @@ class BaseConfig:
     # Claude model
     CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 
-    # ElevenLabs model
+    # ElevenLabs model for preset voices
     ELEVENLABS_MODEL = os.environ.get("ELEVENLABS_MODEL", "eleven_monolingual_v1")
+    # ElevenLabs model for custom/cloned voices (must support IVC/PVC)
+    ELEVENLABS_CUSTOM_MODEL = os.environ.get("ELEVENLABS_CUSTOM_MODEL", "eleven_multilingual_v2")
 
     # Frequency Campaign Manager API
     FREQUENCY_ENABLED = os.environ.get("FREQUENCY_ENABLED", "false").lower() == "true"
