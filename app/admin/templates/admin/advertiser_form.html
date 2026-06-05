@@ -51,8 +51,7 @@
     </div>
     <div class="mb-3">
         <label class="form-label">Service Account JSON</label>
-        {{ form.dv360_service_account_json(class="form-control font-monospace", rows=4, placeholder='Paste the minified single-line JSON from Google Cloud Console → IAM → Service Accounts → Keys') }}
-        <small class="text-muted">Minify first: <code>python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin)))" &lt; key.json</code></small>
+        {{ form.dv360_service_account_json(class="form-control font-monospace", rows=4, placeholder='Paste the JSON from Google Cloud Console → IAM → Service Accounts → Keys') }}
     </div>
 
     <button type="submit" class="btn btn-primary">{{ 'Update' if editing else 'Create' }} Advertiser</button>
