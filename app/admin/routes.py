@@ -424,11 +424,14 @@ def run_regenerate(run_id):
         flash("Script cannot be empty.", "danger")
         return redirect(url_for("admin.run_detail", run_id=run_id))
 
+    deliver_frequency = bool(request.form.get("deliver_frequency"))
+    deliver_dv360 = bool(request.form.get("deliver_dv360"))
+
     from app.pipeline.runner import rerun_from_script
-    new_run = rerun_from_script(run_id, script)
+    new_run = rerun_from_script(run_id, script, deliver_frequency=deliver_frequency, deliver_dv360=deliver_dv360)
 
     if new_run.status == "complete":
-        flash("New run created, audio regenerated, and delivered to Frequency.", "success")
+        flash(f"Run #{new_run.id} created.", "success")
     else:
         flash(f"Run #{new_run.id} failed: {new_run.error_message}", "danger")
 

@@ -45,7 +45,21 @@
     <div class="card-body">
         <form method="post" action="{{ url_for('admin.run_regenerate', run_id=run.id) }}">
             <textarea name="script" class="form-control mb-3" rows="8" style="font-family: monospace; line-height: 1.6;">{{ run.script_text }}</textarea>
-            <button type="submit" class="btn btn-primary">Regenerate + Deliver to Frequency</button>
+            {% if run.campaign.delivery_enabled and run.campaign.frequency_app_id %}
+            <div class="form-check form-check-inline mb-3">
+                <input class="form-check-input" type="checkbox" name="deliver_frequency" id="deliver_frequency" value="1" checked>
+                <label class="form-check-label" for="deliver_frequency">Deliver to Frequency</label>
+            </div>
+            {% endif %}
+            {% if run.campaign.dv360_enabled and run.campaign.dv360_line_item_id %}
+            <div class="form-check form-check-inline mb-3">
+                <input class="form-check-input" type="checkbox" name="deliver_dv360" id="deliver_dv360" value="1" checked>
+                <label class="form-check-label" for="deliver_dv360">Deliver to DV360</label>
+            </div>
+            {% endif %}
+            <div>
+                <button type="submit" class="btn btn-primary">Regenerate</button>
+            </div>
         </form>
     </div>
 </div>
@@ -62,16 +76,16 @@
 
 {% if run.delivery_error %}
 <div class="card mb-4 border-warning">
-    <div class="card-header text-warning">Frequency Delivery Failed</div>
+    <div class="card-header text-warning">Delivery Error</div>
     <div class="card-body">
         <pre class="mb-0 text-warning">{{ run.delivery_error }}</pre>
     </div>
 </div>
 {% elif run.delivered_at %}
 <div class="card mb-4 border-success">
-    <div class="card-header text-success">Delivered to Frequency</div>
+    <div class="card-header text-success">Delivered</div>
     <div class="card-body">
-        <p class="mb-0 text-muted">Delivered at {{ run.delivered_at.strftime('%Y-%m-%d %H:%M') }}</p>
+        <p class="mb-0 text-muted">{{ run.delivery_reference }} &middot; {{ run.delivered_at.strftime('%Y-%m-%d %H:%M') }}</p>
     </div>
 </div>
 {% endif %}

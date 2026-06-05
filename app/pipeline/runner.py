@@ -199,7 +199,7 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
     return ad_run
 
 
-def rerun_from_script(source_run_id: int, script: str) -> AdRun:
+def rerun_from_script(source_run_id: int, script: str, deliver_frequency: bool = True, deliver_dv360: bool = True) -> AdRun:
     """Create a new run from an edited script, then voiceover → mix → deliver.
 
     Copies the feed snapshot and campaign settings from the source run.
@@ -245,8 +245,10 @@ def rerun_from_script(source_run_id: int, script: str) -> AdRun:
         _update_status(new_run, "uploading")
         _save_outputs(new_run, vo_bytes, final_bytes)
 
-        # Deliver to Frequency if configured
-        if campaign.delivery_enabled and campaign.frequency_app_id:
+        # Deliver to Frequency if configured and requested
+        if not deliver_frequency:
+            logger.info("[Frequency] SKIP rerun #%d — unchecked by user", new_run.id)
+        elif campaign.delivery_enabled and campaign.frequency_app_id:
             from app.delivery.frequency import (
                 deliver_ad,
                 is_delivery_available,
@@ -266,6 +268,29 @@ def rerun_from_script(source_run_id: int, script: str) -> AdRun:
                     new_run.delivery_error = str(exc)
                     db.session.commit()
                     logger.error("[Frequency] Delivery failed for rerun #%d: %s", new_run.id, exc)
+
+        # Deliver to DV360 if configured and requested
+        if not deliver_dv360:
+            logger.info("[DV360] SKIP rerun #%d — unchecked by user", new_run.id)
+        elif campaign.dv360_enabled and campaign.dv360_line_item_id:
+            from app.delivery.dv360 import (
+                deliver_ad as dv360_deliver_ad,
+                is_delivery_available as dv360_available,
+                DV360DeliveryError,
+                DV360NotConfiguredError,
+            )
+            if dv360_available():
+                _update_status(new_run, "delivering")
+                try:
+                    creative_name = dv360_deliver_ad(new_run, final_bytes)
+                    new_run.delivered_at = datetime.now(timezone.utc)
+                    new_run.delivery_reference = f"dv360:{creative_name}"
+                    db.session.commit()
+                    logger.info("[DV360] Delivered for rerun #%d — %s", new_run.id, creative_name)
+                except (DV360DeliveryError, DV360NotConfiguredError) as exc:
+                    new_run.delivery_error = str(exc)
+                    db.session.commit()
+                    logger.error("[DV360] Delivery failed for rerun #%d: %s", new_run.id, exc)
 
         new_run.status = "complete"
         new_run.completed_at = datetime.now(timezone.utc)
