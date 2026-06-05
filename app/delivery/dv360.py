@@ -4,7 +4,7 @@ Two-step workflow:
   1. Upload  — POST /upload/v4/advertisers/{advertiserId}/assets?uploadType=multipart
                Returns a mediaId.
   2. Creative — POST /v4/advertisers/{advertiserId}/creatives
-               Links the mediaId as AUDIO_RESOURCE_ROLE_MAIN.
+               Links the mediaId as ASSET_ROLE_MAIN.
 
 Authentication: OAuth 2.0 service account. The service account JSON and DV360
 advertiser ID are stored per-advertiser in the admin UI (Advertiser model).
@@ -101,13 +101,18 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
 
     # Step 2: Create audio creative
     display_name = f"{ad_run.campaign.name} — Run #{ad_run.id} — {ts}"
+    website = advertiser.website or ""
+    if website and not website.startswith("http"):
+        website = f"https://{website}"
+    click_url = website or "https://example.com"
     logger.info(
-        "[DV360] Step 2: create creative — display_name=%s  media_id=%s",
+        "[DV360] Step 2: create creative — display_name=%s  media_id=%s  click_url=%s",
         display_name,
         media_id,
+        click_url,
     )
     creative_name, creative_id = _create_creative(
-        access_token, dv360_advertiser_id, display_name, media_id
+        access_token, dv360_advertiser_id, display_name, media_id, click_url
     )
     logger.info("[DV360] Step 2 OK — creative_name=%s  creative_id=%s", creative_name, creative_id)
 
@@ -195,6 +200,7 @@ def _create_creative(
     advertiser_id: str,
     display_name: str,
     media_id: str,
+    click_url: str,
 ) -> tuple[str, str]:
     """Create a DV360 audio creative object. Returns (resource_name, creative_id)."""
     url = _CREATIVES_URL.format(advertiser_id=advertiser_id)
@@ -202,10 +208,17 @@ def _create_creative(
         "displayName": display_name,
         "creativeType": "CREATIVE_TYPE_AUDIO",
         "hostingSource": "HOSTING_SOURCE_HOSTED",
-        "audioAssets": [
+        "assets": [
             {
                 "asset": {"mediaId": media_id},
-                "role": "AUDIO_RESOURCE_ROLE_MAIN",
+                "role": "ASSET_ROLE_MAIN",
+            }
+        ],
+        "exitEvents": [
+            {
+                "type": "EXIT_EVENT_TYPE_DEFAULT",
+                "url": click_url,
+                "name": "default",
             }
         ],
     }
