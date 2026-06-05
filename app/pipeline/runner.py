@@ -345,15 +345,12 @@ def _build_template_vars(campaign: Campaign, feed_data: dict) -> dict:
         pronunciation_section = ""
         pronunciation_instruction = ""
 
-<<<<<<< Updated upstream
     # Pick one ad tag at random (if any are configured)
     tags = campaign.ad_tags or []
     ad_tag = random.choice(tags) if tags else ""
     tag_words = len(ad_tag.split()) if ad_tag else 0
     body_words = max(10, campaign.target_words - tag_words)
 
-=======
->>>>>>> Stashed changes
     secs = campaign.target_seconds
     if secs <= 20:
         fixture_mention_guidance = "No time for more — go straight to the transition"
@@ -374,13 +371,9 @@ def _build_template_vars(campaign: Campaign, feed_data: dict) -> dict:
         "target_city": campaign.target_city or "",
         "target_seconds": secs,
         "target_words": campaign.target_words,
-<<<<<<< Updated upstream
         "body_words": body_words,
         "fixture_mention_guidance": fixture_mention_guidance,
         "ad_tag": ad_tag,
-=======
-        "fixture_mention_guidance": fixture_mention_guidance,
->>>>>>> Stashed changes
         "pronunciation_section": pronunciation_section,
         "pronunciation_instruction": pronunciation_instruction,
     }
