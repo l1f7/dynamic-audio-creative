@@ -41,11 +41,16 @@ class AdRun(db.Model):
     # Error info
     error_message = db.Column(db.Text, nullable=True)
 
-    # Delivery
+    # Frequency delivery
     delivered_at = db.Column(db.DateTime, nullable=True)
     delivery_reference = db.Column(db.String(500), nullable=True)
     delivery_error = db.Column(db.Text, nullable=True)
     vast_response = db.Column(db.Text, nullable=True)
+
+    # DV360 delivery
+    dv360_delivered_at = db.Column(db.DateTime, nullable=True)
+    dv360_creative_name = db.Column(db.String(500), nullable=True)
+    dv360_delivery_error = db.Column(db.Text, nullable=True)
 
     # Job tracking
     job_id = db.Column(db.String(100), nullable=True)

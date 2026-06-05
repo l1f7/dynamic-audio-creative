@@ -74,20 +74,52 @@
 </div>
 {% endif %}
 
+{% if run.campaign.delivery_enabled and run.campaign.frequency_app_id %}
 {% if run.delivery_error %}
 <div class="card mb-4 border-warning">
-    <div class="card-header text-warning">Delivery Error</div>
+    <div class="card-header text-warning">Frequency — Delivery Error</div>
     <div class="card-body">
         <pre class="mb-0 text-warning">{{ run.delivery_error }}</pre>
     </div>
 </div>
 {% elif run.delivered_at %}
 <div class="card mb-4 border-success">
-    <div class="card-header text-success">Delivered</div>
+    <div class="card-header text-success">Frequency — Delivered</div>
     <div class="card-body">
-        <p class="mb-0 text-muted">{{ run.delivery_reference }} &middot; {{ run.delivered_at.strftime('%Y-%m-%d %H:%M') }}</p>
+        <p class="mb-0 text-muted">{{ run.delivered_at.strftime('%Y-%m-%d %H:%M') }}</p>
     </div>
 </div>
+{% endif %}
+{% endif %}
+
+{% if run.campaign.dv360_enabled and run.campaign.dv360_line_item_id %}
+{% if run.dv360_delivery_error %}
+<div class="card mb-4 border-warning">
+    <div class="card-header text-warning">DV360 — Delivery Error</div>
+    <div class="card-body">
+        <pre class="mb-0 text-warning">{{ run.dv360_delivery_error }}</pre>
+    </div>
+</div>
+{% elif run.dv360_delivered_at %}
+<div class="card mb-4 border-success">
+    <div class="card-header text-success">DV360 — Delivered</div>
+    <div class="card-body">
+        {% set parts = run.dv360_creative_name.split('/') if run.dv360_creative_name else [] %}
+        {% set advertiser_id = run.campaign.advertiser.dv360_advertiser_id %}
+        {% set creative_id = parts[-1] if parts | length >= 2 else '' %}
+        <p class="mb-1 text-muted">{{ run.dv360_delivered_at.strftime('%Y-%m-%d %H:%M') }}</p>
+        {% if run.dv360_creative_name %}
+        <p class="mb-0">
+            <small class="text-muted">Creative: </small>
+            <code>{{ run.dv360_creative_name }}</code>
+            {% if advertiser_id and creative_id %}
+            &nbsp;<a href="https://displayvideo.google.com/ng_nav/p/_/a/{{ advertiser_id }}/creatives/{{ creative_id }}" target="_blank" rel="noopener" class="small">View in DV360 &rarr;</a>
+            {% endif %}
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 {% endif %}
 
 {% if run.feed_data_snapshot %}

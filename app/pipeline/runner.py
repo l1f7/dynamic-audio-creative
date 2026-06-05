@@ -165,13 +165,13 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
                 _update_status(ad_run, "delivering")
                 try:
                     creative_name = dv360_deliver_ad(ad_run, final_bytes)
-                    ad_run.delivered_at = datetime.now(timezone.utc)
-                    ad_run.delivery_reference = f"dv360:{creative_name}"
+                    ad_run.dv360_delivered_at = datetime.now(timezone.utc)
+                    ad_run.dv360_creative_name = creative_name
                     db.session.commit()
                     logger.info("[DV360] Delivered successfully for run #%d — %s",
                                 ad_run.id, creative_name)
                 except (DV360DeliveryError, DV360NotConfiguredError) as exc:
-                    ad_run.delivery_error = str(exc)
+                    ad_run.dv360_delivery_error = str(exc)
                     db.session.commit()
                     logger.error("[DV360] Delivery FAILED for run #%d: %s", ad_run.id, exc)
 
@@ -283,12 +283,12 @@ def rerun_from_script(source_run_id: int, script: str, deliver_frequency: bool =
                 _update_status(new_run, "delivering")
                 try:
                     creative_name = dv360_deliver_ad(new_run, final_bytes)
-                    new_run.delivered_at = datetime.now(timezone.utc)
-                    new_run.delivery_reference = f"dv360:{creative_name}"
+                    new_run.dv360_delivered_at = datetime.now(timezone.utc)
+                    new_run.dv360_creative_name = creative_name
                     db.session.commit()
                     logger.info("[DV360] Delivered for rerun #%d — %s", new_run.id, creative_name)
                 except (DV360DeliveryError, DV360NotConfiguredError) as exc:
-                    new_run.delivery_error = str(exc)
+                    new_run.dv360_delivery_error = str(exc)
                     db.session.commit()
                     logger.error("[DV360] Delivery failed for rerun #%d: %s", new_run.id, exc)
 
