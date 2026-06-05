@@ -139,7 +139,43 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
                     db.session.commit()
                     logger.error("[Frequency] Delivery FAILED for run #%d: %s", ad_run.id, exc)
 
-        # 8. Done
+        # 8. Deliver to DV360 (if enabled)
+        if not campaign.dv360_enabled:
+            logger.info("[DV360] SKIP run #%d — dv360_enabled=False on campaign '%s'",
+                        ad_run.id, campaign.name)
+        elif not campaign.dv360_line_item_id:
+            logger.warning("[DV360] SKIP run #%d — no dv360_line_item_id on campaign '%s'",
+                           ad_run.id, campaign.name)
+        else:
+            from app.delivery.dv360 import (
+                deliver_ad as dv360_deliver_ad,
+                is_delivery_available as dv360_available,
+                DV360DeliveryError,
+                DV360NotConfiguredError,
+            )
+            from flask import current_app as _app
+            logger.info("[DV360] config check — DV360_ENABLED=%s",
+                        _app.config.get("DV360_ENABLED"))
+            if not dv360_available():
+                logger.warning(
+                    "[DV360] SKIP run #%d — DV360_ENABLED is not set to true",
+                    ad_run.id,
+                )
+            else:
+                _update_status(ad_run, "delivering")
+                try:
+                    creative_name = dv360_deliver_ad(ad_run, final_bytes)
+                    ad_run.delivered_at = datetime.now(timezone.utc)
+                    ad_run.delivery_reference = f"dv360:{creative_name}"
+                    db.session.commit()
+                    logger.info("[DV360] Delivered successfully for run #%d — %s",
+                                ad_run.id, creative_name)
+                except (DV360DeliveryError, DV360NotConfiguredError) as exc:
+                    ad_run.delivery_error = str(exc)
+                    db.session.commit()
+                    logger.error("[DV360] Delivery FAILED for run #%d: %s", ad_run.id, exc)
+
+        # 9. Done
         ad_run.status = "complete"
         ad_run.completed_at = datetime.now(timezone.utc)
         db.session.commit()
@@ -284,12 +320,15 @@ def _build_template_vars(campaign: Campaign, feed_data: dict) -> dict:
         pronunciation_section = ""
         pronunciation_instruction = ""
 
+<<<<<<< Updated upstream
     # Pick one ad tag at random (if any are configured)
     tags = campaign.ad_tags or []
     ad_tag = random.choice(tags) if tags else ""
     tag_words = len(ad_tag.split()) if ad_tag else 0
     body_words = max(10, campaign.target_words - tag_words)
 
+=======
+>>>>>>> Stashed changes
     secs = campaign.target_seconds
     if secs <= 20:
         fixture_mention_guidance = "No time for more — go straight to the transition"
@@ -310,9 +349,13 @@ def _build_template_vars(campaign: Campaign, feed_data: dict) -> dict:
         "target_city": campaign.target_city or "",
         "target_seconds": secs,
         "target_words": campaign.target_words,
+<<<<<<< Updated upstream
         "body_words": body_words,
         "fixture_mention_guidance": fixture_mention_guidance,
         "ad_tag": ad_tag,
+=======
+        "fixture_mention_guidance": fixture_mention_guidance,
+>>>>>>> Stashed changes
         "pronunciation_section": pronunciation_section,
         "pronunciation_instruction": pronunciation_instruction,
     }

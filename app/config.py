@@ -47,6 +47,10 @@ class BaseConfig:
     CMPAPI_BASE_URL = os.environ.get("CMPAPI_BASE_URL")   # e.g. https://cmpapi.example.com
     # Note: app ID is configured per-campaign via Campaign.frequency_app_id
 
+    # Display & Video 360 (DV360)
+    DV360_ENABLED = os.environ.get("DV360_ENABLED", "false").lower() == "true"
+    # Note: service account JSON and advertiser ID are configured per-advertiser in the admin UI
+
 
 class DevelopmentConfig(BaseConfig):
     """Development configuration."""

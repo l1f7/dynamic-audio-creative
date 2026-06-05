@@ -285,6 +285,8 @@ def advertiser_new():
             is_active=form.is_active.data,
             frequency_client=form.frequency_client.data or None,
             frequency_token=form.frequency_token.data or None,
+            dv360_advertiser_id=form.dv360_advertiser_id.data or None,
+            dv360_service_account_json=form.dv360_service_account_json.data or None,
         )
         db.session.add(adv)
         db.session.commit()
@@ -348,6 +350,8 @@ def campaign_new():
             target_words=form.target_words.data,
             cron_schedule=form.cron_schedule.data or None,
             frequency_app_id=form.frequency_app_id.data or None,
+            dv360_enabled=form.dv360_enabled.data,
+            dv360_line_item_id=form.dv360_line_item_id.data or None,
         )
         db.session.add(campaign)
         db.session.commit()

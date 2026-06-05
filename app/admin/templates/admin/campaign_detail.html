@@ -53,11 +53,17 @@
 
 {% if campaign.pronunciation_entries %}
 <div class="card mb-4">
-    <div class="card-header">Pronunciation Guide</div>
-    <div class="card-body">
-        {% for entry in campaign.pronunciation_entries %}
-        <span class="badge bg-light text-dark border me-1">"{{ entry.written_form }}" &rarr; "{{ entry.spoken_form }}"</span>
-        {% endfor %}
+    <div class="card-header" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#pron-drawer" aria-expanded="false" aria-controls="pron-drawer">
+        Pronunciation Guide
+        <span class="text-muted small ms-2">({{ campaign.pronunciation_entries | length }})</span>
+        <span class="float-end text-muted small">&#9660;</span>
+    </div>
+    <div class="collapse" id="pron-drawer">
+        <div class="card-body">
+            {% for entry in campaign.pronunciation_entries %}
+            <span class="badge bg-light text-dark border me-1 mb-1">"{{ entry.written_form }}" &rarr; "{{ entry.spoken_form }}"</span>
+            {% endfor %}
+        </div>
     </div>
 </div>
 {% endif %}

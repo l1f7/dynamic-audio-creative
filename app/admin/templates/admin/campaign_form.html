@@ -133,6 +133,11 @@
         <div class="card-header">Pronunciation Guide</div>
         <div class="card-body">
             <p class="text-muted small">Map written words to how they should be spoken by TTS.</p>
+            <div id="pron-csv-area" class="mb-3" style="display:none;">
+                <textarea id="pron-csv-input" class="form-control form-control-sm font-monospace mb-1" rows="4" placeholder="written,spoken&#10;MRG,M-R-G&#10;Vogue Theatre,Vohg Theatre"></textarea>
+                <button type="button" class="btn btn-sm btn-primary" id="pron-csv-import">Import</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-1" id="pron-csv-cancel">Cancel</button>
+            </div>
             <div id="pronunciation-rows">
                 {% if editing and campaign and campaign.pronunciation_entries %}
                     {% for entry in campaign.pronunciation_entries %}
@@ -163,6 +168,7 @@
                 {% endif %}
             </div>
             <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="add-pron-row">+ Add Row</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary mt-1 ms-1" id="pron-csv-toggle">Paste CSV</button>
         </div>
     </div>
 
@@ -236,7 +242,19 @@
             <div class="mb-3">
                 <label class="form-label">Frequency App ID</label>
                 {{ form.frequency_app_id(class="form-control", placeholder="e.g. 12345") }}
-                <small class="text-muted">Required when delivery is enabled. The Frequency application ID to deliver ads to.</small>
+                <small class="text-muted">Required when Frequency delivery is enabled. The Frequency application ID to deliver ads to.</small>
+            </div>
+            <hr class="my-3">
+            <div class="mb-3">
+                <div class="form-check">
+                    {{ form.dv360_enabled(class="form-check-input") }}
+                    <label class="form-check-label">{{ form.dv360_enabled.label.text }}</label>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">DV360 Line Item ID</label>
+                {{ form.dv360_line_item_id(class="form-control", placeholder="e.g. 987654321") }}
+                <small class="text-muted">Required when DV360 delivery is enabled. Each generated creative is assigned to this line item, replacing the previous one.</small>
             </div>
         </div>
     </div>
@@ -267,23 +285,56 @@ document.getElementById('add-ad-tag').addEventListener('click', function() {
     row.querySelector('textarea').focus();
 });
 
-document.getElementById('add-pron-row').addEventListener('click', function() {
+function _addPronRow(written, spoken) {
     const container = document.getElementById('pronunciation-rows');
     const idx = container.querySelectorAll('.pron-row').length;
     const row = document.createElement('div');
     row.className = 'row mb-2 pron-row';
     row.innerHTML = `
         <div class="col-md-5">
-            <input type="text" name="pron_written_${idx}" class="form-control form-control-sm" placeholder="Written form">
+            <input type="text" name="pron_written_${idx}" class="form-control form-control-sm" placeholder="Written form" value="${(written || '').replace(/"/g, '&quot;')}">
         </div>
         <div class="col-md-5">
-            <input type="text" name="pron_spoken_${idx}" class="form-control form-control-sm" placeholder="Spoken form">
+            <input type="text" name="pron_spoken_${idx}" class="form-control form-control-sm" placeholder="Spoken form" value="${(spoken || '').replace(/"/g, '&quot;')}">
         </div>
         <div class="col-md-2">
             <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.pron-row').remove()">Remove</button>
         </div>
     `;
     container.appendChild(row);
+}
+
+document.getElementById('add-pron-row').addEventListener('click', function() {
+    _addPronRow('', '');
+});
+
+document.getElementById('pron-csv-toggle').addEventListener('click', function() {
+    const area = document.getElementById('pron-csv-area');
+    area.style.display = area.style.display === 'none' ? 'block' : 'none';
+    if (area.style.display === 'block') document.getElementById('pron-csv-input').focus();
+});
+
+document.getElementById('pron-csv-cancel').addEventListener('click', function() {
+    document.getElementById('pron-csv-area').style.display = 'none';
+    document.getElementById('pron-csv-input').value = '';
+});
+
+document.getElementById('pron-csv-import').addEventListener('click', function() {
+    const lines = document.getElementById('pron-csv-input').value.split('\n');
+    let imported = 0;
+    lines.forEach(function(line) {
+        line = line.trim();
+        if (!line) return;
+        const comma = line.indexOf(',');
+        if (comma === -1) return;
+        const written = line.slice(0, comma).trim();
+        const spoken = line.slice(comma + 1).trim();
+        if (written && spoken) { _addPronRow(written, spoken); imported++; }
+    });
+    if (imported) {
+        document.getElementById('pron-csv-area').style.display = 'none';
+        document.getElementById('pron-csv-input').value = '';
+    }
 });
 </script>
 {% endblock %}

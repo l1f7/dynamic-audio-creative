@@ -17,6 +17,10 @@ class Advertiser(db.Model):
     frequency_client = db.Column(db.String(100), nullable=True)
     frequency_token = db.Column(db.Text, nullable=True)
 
+    # DV360 (Display & Video 360) credentials
+    dv360_advertiser_id = db.Column(db.String(100), nullable=True)
+    dv360_service_account_json = db.Column(db.Text, nullable=True)
+
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     updated_at = db.Column(db.DateTime, onupdate=db.func.now())
 

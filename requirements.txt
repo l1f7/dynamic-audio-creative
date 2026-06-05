@@ -11,3 +11,4 @@ anthropic
 elevenlabs
 requests
 croniter
+google-auth
