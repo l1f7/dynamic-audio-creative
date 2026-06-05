@@ -286,7 +286,7 @@ def advertiser_new():
             frequency_client=form.frequency_client.data or None,
             frequency_token=form.frequency_token.data or None,
             dv360_advertiser_id=form.dv360_advertiser_id.data or None,
-            dv360_service_account_json=form.dv360_service_account_json.data or None,
+            dv360_service_account_json=_minify_json(form.dv360_service_account_json.data),
         )
         db.session.add(adv)
         db.session.commit()
@@ -304,6 +304,7 @@ def advertiser_edit(adv_id):
 
     if form.validate_on_submit():
         form.populate_obj(adv)
+        adv.dv360_service_account_json = _minify_json(adv.dv360_service_account_json)
         db.session.commit()
         flash(f"Advertiser '{adv.name}' updated.", "success")
         return redirect(url_for("admin.advertiser_list"))
@@ -630,6 +631,17 @@ def _save_ad_tags(campaign, form_data):
 
     campaign.ad_tags = tags or None
     db.session.commit()
+
+
+def _minify_json(value):
+    """Return value as compact single-line JSON, or None if blank/invalid."""
+    import json
+    if not value or not value.strip():
+        return None
+    try:
+        return json.dumps(json.loads(value), separators=(",", ":"))
+    except (json.JSONDecodeError, TypeError):
+        return value.strip() or None
 
 
 def _current_db_admin_id():
