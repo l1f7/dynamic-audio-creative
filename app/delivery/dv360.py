@@ -247,12 +247,7 @@ def _assign_creative(
     """Assign the creative to a line item, replacing any previous assignment."""
     url = _LINE_ITEM_URL.format(advertiser_id=advertiser_id, line_item_id=line_item_id)
     body = {
-        "creativeAssignments": [
-            {
-                "creativeId": creative_id,
-                "active": True,
-            }
-        ]
+        "creativeIds": [creative_id],
     }
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -260,7 +255,7 @@ def _assign_creative(
     }
     resp = requests.patch(
         url,
-        params={"updateMask": "creativeAssignments"},
+        params={"updateMask": "creativeIds"},
         json=body,
         headers=headers,
         timeout=30,
