@@ -86,13 +86,22 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
         line_item_id,
     )
 
+    try:
+        sa_email = json.loads(service_account_json).get("client_email", "<unknown>")
+    except Exception:
+        sa_email = "<invalid JSON>"
+    logger.info("[DV360] service_account_email=%s", sa_email)
+
     access_token = _get_access_token(service_account_json)
+    logger.info("[DV360] OAuth token obtained")
 
     # Step 1: Upload audio asset
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     filename = f"ad_{ad_run.id}_{ts}.mp3"
+    upload_url = _UPLOAD_URL.format(advertiser_id=dv360_advertiser_id)
     logger.info(
-        "[DV360] Step 1: upload asset — filename=%s  size=%d bytes",
+        "[DV360] Step 1: upload asset — POST %s  filename=%s  size=%d bytes",
+        upload_url,
         filename,
         len(final_ad_bytes),
     )
@@ -105,8 +114,10 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
     if website and not website.startswith("http"):
         website = f"https://{website}"
     click_url = website or "https://example.com"
+    creatives_url = _CREATIVES_URL.format(advertiser_id=dv360_advertiser_id)
     logger.info(
-        "[DV360] Step 2: create creative — display_name=%s  media_id=%s  click_url=%s",
+        "[DV360] Step 2: create creative — POST %s  display_name=%s  media_id=%s  click_url=%s",
+        creatives_url,
         display_name,
         media_id,
         click_url,
@@ -117,9 +128,10 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
     logger.info("[DV360] Step 2 OK — creative_name=%s  creative_id=%s", creative_name, creative_id)
 
     # Step 3: Assign creative to line item (replaces previous assignment)
+    line_item_url = _LINE_ITEM_URL.format(advertiser_id=dv360_advertiser_id, line_item_id=line_item_id)
     logger.info(
-        "[DV360] Step 3: assign creative to line item — line_item_id=%s  creative_id=%s",
-        line_item_id,
+        "[DV360] Step 3: assign creative — PATCH %s  creative_id=%s",
+        line_item_url,
         creative_id,
     )
     _assign_creative(access_token, dv360_advertiser_id, line_item_id, creative_id)
