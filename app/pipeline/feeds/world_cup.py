@@ -1,12 +1,13 @@
-"""World Cup feed — uses the /today proxy endpoint.
+"""World Cup feed — uses the /yesterday proxy endpoint.
 
-Calls the internal API proxy's /today route, which returns today's fixtures
+Calls the internal API proxy's /yesterday route, which returns yesterday's fixtures
 (with goal scorers) and the current top-scorer table. No Claude extraction
 needed — the response is already structured JSON.
 """
 
 import logging
 from datetime import datetime, timezone
+
 import requests
 
 from app.pipeline.exceptions import FeedFetchError
@@ -32,9 +33,9 @@ _SOCCER_TIERS = [
 DEFAULT_PROMPT_TEMPLATE = """\
 You are writing a short radio ad script for the 2026 World Cup.
 
-TODAY'S DATE: {match_date}
+DATES: {match_date}
 
-TODAY'S MATCHES:
+YESTERDAY'S MATCHES:
 {fixtures_formatted}
 
 TOP SCORERS:
@@ -50,12 +51,12 @@ INSTRUCTIONS:
 - The ad tag above is MANDATORY and must appear verbatim as the final words — do not change a single word
 - Write World Cup coverage of STRICTLY NO MORE THAN {body_words} words, then append the ad tag exactly as written
 - Total script must not exceed {target_words} words (= {target_seconds} seconds) — going over will cut the ad off on air
-- Open with today's World Cup action — lead with the most exciting result or live match
+- Open with yesterday's World Cup action — lead with the most exciting result or live match
 - {fixture_mention_guidance}
 - Write a smooth transition from the World Cup coverage into the ad tag
 =======
 - Write a natural, conversational script that fills but does NOT exceed {target_seconds} seconds when read aloud at a normal pace (hard maximum: {target_words} words)
-- Open with today's World Cup action — lead with the most exciting result or live match
+- Open with yesterday's World Cup action — lead with the most exciting result or live match
 - {fixture_mention_guidance}
 - Write a smooth transition from the football news to the advertiser
 - Close with the advertiser name, tagline, and call to action
@@ -82,7 +83,6 @@ class WorldCupFeed(BaseFeed):
             resp.raise_for_status()
         except requests.RequestException as exc:
             raise FeedFetchError(f"World Cup feed fetch failed: {exc}") from exc
-
 
         try:
             data = resp.json()
