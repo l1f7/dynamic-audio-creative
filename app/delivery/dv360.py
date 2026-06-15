@@ -13,6 +13,8 @@ Each advertiser can have its own Google Cloud service account.
 
 import json
 import logging
+import os
+import tempfile
 import uuid
 from datetime import datetime, timezone
 
@@ -178,22 +180,27 @@ def _upload_asset(
 ) -> str:
     """Upload the audio file as a DV360 asset. Returns the mediaId string."""
     url = _UPLOAD_URL.format(advertiser_id=advertiser_id)
-    body, content_type = _build_multipart_related(
+    tmp_path, content_type = _write_multipart_related(
         metadata={"filename": filename},
         media_bytes=audio_bytes,
         media_type="audio/mpeg",
     )
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": content_type,
-    }
-    resp = requests.post(
-        url,
-        params={"uploadType": "multipart"},
-        headers=headers,
-        data=body,
-        timeout=120,
-    )
+    try:
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": content_type,
+            "Content-Length": str(os.path.getsize(tmp_path)),
+        }
+        with open(tmp_path, "rb") as fh:
+            resp = requests.post(
+                url,
+                params={"uploadType": "multipart"},
+                headers=headers,
+                data=fh,
+                timeout=120,
+            )
+    finally:
+        os.unlink(tmp_path)
     logger.info(
         "[DV360] _upload_asset HTTP %s — %s", resp.status_code, resp.text[:500]
     )
@@ -283,28 +290,35 @@ def _assign_creative(
 # ---------------------------------------------------------------------------
 
 
-def _build_multipart_related(
+def _write_multipart_related(
     metadata: dict,
     media_bytes: bytes,
     media_type: str,
-) -> tuple[bytes, str]:
-    """Build a multipart/related body suitable for Google API media uploads."""
+) -> tuple[str, str]:
+    """Write a multipart/related body to a temp file for streaming upload.
+
+    Returns (tmp_file_path, content_type).  Caller must delete the file.
+    """
     boundary = uuid.uuid4().hex
     metadata_json = json.dumps(metadata).encode("utf-8")
 
-    body = b"".join([
-        f"--{boundary}\r\n".encode(),
-        b"Content-Type: application/json; charset=UTF-8\r\n\r\n",
-        metadata_json,
-        b"\r\n",
-        f"--{boundary}\r\n".encode(),
-        f"Content-Type: {media_type}\r\n\r\n".encode(),
-        media_bytes,
-        b"\r\n",
-        f"--{boundary}--".encode(),
-    ])
+    fd, tmp_path = tempfile.mkstemp(suffix=".multipart")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(f"--{boundary}\r\n".encode())
+            f.write(b"Content-Type: application/json; charset=UTF-8\r\n\r\n")
+            f.write(metadata_json)
+            f.write(b"\r\n")
+            f.write(f"--{boundary}\r\n".encode())
+            f.write(f"Content-Type: {media_type}\r\n\r\n".encode())
+            f.write(media_bytes)
+            f.write(b"\r\n")
+            f.write(f"--{boundary}--".encode())
+    except BaseException:
+        os.unlink(tmp_path)
+        raise
 
-    return body, f"multipart/related; boundary={boundary}"
+    return tmp_path, f"multipart/related; boundary={boundary}"
 
 
 def _raise_for_status(resp: requests.Response, step: str) -> None:

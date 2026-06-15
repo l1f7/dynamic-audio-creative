@@ -1,6 +1,7 @@
 """Generate voiceover audio via the ElevenLabs API."""
 
 import logging
+import tempfile
 
 from elevenlabs.client import ElevenLabs
 from flask import current_app
@@ -51,11 +52,14 @@ def generate_voiceover(script: str, voice_id: str, is_custom: bool = False) -> b
             f"ElevenLabs TTS call failed: {exc}"
         ) from exc
 
-    # Collect all chunks into bytes
-    chunks = []
-    for chunk in audio_iterator:
-        chunks.append(chunk)
+    # Stream chunks to a spooled temp file (spills to disk above 5 MB)
+    with tempfile.SpooledTemporaryFile(max_size=5 * 1024 * 1024) as spool:
+        for chunk in audio_iterator:
+            spool.write(chunk)
 
-    audio_bytes = b"".join(chunks)
-    logger.info("Voiceover generated (%d bytes)", len(audio_bytes))
+        size = spool.tell()
+        spool.seek(0)
+        audio_bytes = spool.read()
+
+    logger.info("Voiceover generated (%d bytes)", size)
     return audio_bytes

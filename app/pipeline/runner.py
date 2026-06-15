@@ -98,6 +98,7 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
         # 6. Save outputs
         _update_status(ad_run, "uploading")
         _save_outputs(ad_run, vo_bytes, final_bytes)
+        del vo_bytes, music_bytes  # free intermediate buffers before delivery
 
         # 7. Deliver to Frequency (if enabled and app ID is set for this campaign)
         if not campaign.delivery_enabled:
@@ -244,6 +245,7 @@ def rerun_from_script(source_run_id: int, script: str, deliver_frequency: bool =
 
         _update_status(new_run, "uploading")
         _save_outputs(new_run, vo_bytes, final_bytes)
+        del vo_bytes, music_bytes  # free intermediate buffers before delivery
 
         # Deliver to Frequency if configured and requested
         if not deliver_frequency:
