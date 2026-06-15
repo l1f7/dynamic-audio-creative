@@ -15,12 +15,12 @@ logger = logging.getLogger(__name__)
 def run_due_campaigns():
     """Check all active campaigns and run any whose cron schedule is due.
 
-    Intended to be called every minute. A campaign is considered due if its
-    most recent cron tick falls within the last 60 seconds and it has no
-    run already in progress.
+    Intended to be called periodically (e.g. every minute via Render cron).
+    A campaign is due if its next cron tick after the last finished run is
+    in the past.  This is resilient to scheduler jitter or slow cold-boots
+    because it anchors to persistent state rather than a fixed time window.
     """
     now = datetime.now(timezone.utc)
-    window_start = now - timedelta(seconds=60)
 
     campaigns = Campaign.query.filter_by(is_active=True).all()
     due = []
@@ -29,9 +29,30 @@ def run_due_campaigns():
         if not campaign.cron_schedule:
             continue
 
+        # Anchor to the last finished run (any trigger) so missed ticks
+        # are caught on the next scheduler invocation.
+        last_run = (
+            AdRun.query
+            .filter_by(campaign_id=campaign.id)
+            .filter(AdRun.status.in_(["complete", "failed"]))
+            .order_by(AdRun.created_at.desc())
+            .first()
+        )
+        if last_run and last_run.created_at:
+            base_time = last_run.created_at
+            # DB may return naive datetime — ensure UTC-aware for croniter
+            if base_time.tzinfo is None:
+                base_time = base_time.replace(tzinfo=timezone.utc)
+        else:
+            # Never run before — look back 24 h so the first tick is caught
+            base_time = now - timedelta(hours=24)
+
         try:
-            cron = croniter(campaign.cron_schedule, window_start)
+            cron = croniter(campaign.cron_schedule, base_time)
             next_tick = cron.get_next(datetime)
+            # Ensure aware for comparison with `now`
+            if next_tick.tzinfo is None:
+                next_tick = next_tick.replace(tzinfo=timezone.utc)
         except Exception:
             logger.warning(
                 "Campaign %d has invalid cron_schedule %r — skipping",
