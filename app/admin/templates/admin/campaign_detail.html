@@ -104,11 +104,15 @@
                     —
                 {% endif %}
             </td>
-            <td>
+            <td class="text-nowrap">
                 {% if run.status == 'complete' and run.final_ad_s3_key %}
                     <a href="{{ url_for('admin.run_audio', run_id=run.id) }}" class="btn btn-sm btn-outline-success" target="_blank">Play</a>
                     <a href="{{ url_for('admin.run_download', run_id=run.id) }}" class="btn btn-sm btn-outline-secondary">Download</a>
                 {% endif %}
+                <form method="post" action="{{ url_for('admin.run_delete', run_id=run.id) }}" class="d-inline"
+                      onsubmit="return confirm('Delete run #{{ run.id }}?')">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                </form>
             </td>
         </tr>
         {% endfor %}

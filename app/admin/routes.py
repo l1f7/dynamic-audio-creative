@@ -414,6 +414,40 @@ def run_detail(run_id):
     return render_template("admin/run_detail.html", run=ad_run)
 
 
+@admin_bp.route("/runs/<int:run_id>/delete", methods=["POST"])
+@login_required
+def run_delete(run_id):
+    """Delete an ad run and its associated audio files."""
+    ad_run = AdRun.query.get_or_404(run_id)
+    campaign_id = ad_run.campaign_id
+
+    # Clean up audio files
+    s3_keys = [ad_run.voiceover_s3_key, ad_run.final_ad_s3_key]
+    for key in s3_keys:
+        if not key:
+            continue
+        if os.path.isfile(key):
+            # Local dev file
+            try:
+                os.remove(key)
+            except OSError:
+                pass
+        else:
+            # S3
+            try:
+                from flask import current_app
+                if current_app.config.get("S3_ENDPOINT_URL"):
+                    from app.storage import s3
+                    s3.delete(key)
+            except Exception:
+                pass  # best-effort cleanup
+
+    db.session.delete(ad_run)
+    db.session.commit()
+    flash(f"Run #{run_id} deleted.", "info")
+    return redirect(url_for("admin.campaign_detail", campaign_id=campaign_id))
+
+
 @admin_bp.route("/runs/<int:run_id>/regenerate", methods=["POST"])
 @login_required
 def run_regenerate(run_id):

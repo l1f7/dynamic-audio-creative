@@ -12,7 +12,7 @@
             &middot; {{ run.created_at.strftime('%Y-%m-%d %H:%M') if run.created_at else '' }}
         </p>
     </div>
-    <div>
+    <div class="d-flex align-items-center gap-2">
         {% if run.status == 'complete' %}
             <span class="badge badge-status-complete fs-6">{{ run.status_label }}</span>
         {% elif run.status == 'failed' %}
@@ -20,6 +20,10 @@
         {% else %}
             <span class="badge badge-status-running fs-6">{{ run.status_label }}</span>
         {% endif %}
+        <form method="post" action="{{ url_for('admin.run_delete', run_id=run.id) }}" class="d-inline"
+              onsubmit="return confirm('Delete run #{{ run.id }}? This cannot be undone.')">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+        </form>
     </div>
 </div>
 
