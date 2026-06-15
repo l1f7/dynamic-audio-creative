@@ -201,9 +201,7 @@ def _upload_asset(
             )
     finally:
         os.unlink(tmp_path)
-    logger.info(
-        "[DV360] _upload_asset HTTP %s — %s", resp.status_code, resp.text[:500]
-    )
+    logger.info("[DV360] _upload_asset HTTP %s", resp.status_code)
     _raise_for_status(resp, "upload asset")
     data = resp.json()
     try:
@@ -246,9 +244,7 @@ def _create_creative(
         "Content-Type": "application/json",
     }
     resp = requests.post(url, json=body, headers=headers, timeout=30)
-    logger.info(
-        "[DV360] _create_creative HTTP %s — %s", resp.status_code, resp.text[:500]
-    )
+    logger.info("[DV360] _create_creative HTTP %s", resp.status_code)
     _raise_for_status(resp, "create creative")
     data = resp.json()
     creative_name = data.get("name", f"advertisers/{advertiser_id}/creatives/{media_id}")
@@ -279,9 +275,7 @@ def _assign_creative(
         headers=headers,
         timeout=30,
     )
-    logger.info(
-        "[DV360] _assign_creative HTTP %s — %s", resp.status_code, resp.text[:500]
-    )
+    logger.info("[DV360] _assign_creative HTTP %s", resp.status_code)
     _raise_for_status(resp, "assign creative to line item")
 
 

@@ -88,7 +88,6 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
     )
     validate_resp = _validate(base_url, client, token)
     validate_data = validate_resp.json()
-    logger.info("[Frequency] Step 1 response: %s", validate_data)
     campaign_id = validate_data["tokenData"]["campaign_id"]
 
     auth_token = validate_data.get("authToken")
@@ -112,7 +111,6 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
         app_id,
     )
     draft_data = _create_draft(base_url, app_id, auth_headers, auth_cookies)
-    logger.info("[Frequency] Step 2 response: %s", draft_data)
     draft_id = draft_data["id"]
     logger.info("[Frequency] Step 2 OK — draft_id=%s", draft_id)
 
@@ -133,7 +131,6 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
         base_url, app_id, campaign_id, final_ad_bytes, duration_secs, auth_headers, auth_cookies,
         filename=filename,
     )
-    logger.info("[Frequency] Step 3 response: %s", creative_data)
     logger.info(
         "[Frequency] Step 3 OK — name=%s  url=%s",
         creative_data.get("name"),
@@ -150,11 +147,10 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
         "rowIndex": 0,
     }
     logger.info(
-        "[Frequency] Step 4: attach creative — POST %s/application/%s/draft/%s/creative  body=%s",
+        "[Frequency] Step 4: attach creative — POST %s/application/%s/draft/%s/creative",
         base_url,
         app_id,
         draft_id,
-        attach_body,
     )
     _attach_creative(base_url, app_id, draft_id, creative_data, auth_headers, auth_cookies)
     logger.info("[Frequency] Step 4 OK")
@@ -170,7 +166,6 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
         publish_date,
     )
     vast_xml = _publish_draft(base_url, app_id, draft_id, auth_headers, auth_cookies)
-    logger.info("[Frequency] Step 5 response (first 500 chars): %s", vast_xml[:500])
     logger.info("[Frequency] Delivery complete for ad_run #%s", ad_run.id)
 
     return vast_xml
@@ -184,7 +179,7 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
 def _validate(base_url: str, client: str, token: str) -> requests.Response:
     url = f"{base_url}/campaign/validate/{quote(client, safe='')}/{quote(token, safe='')}"
     resp = requests.get(url, timeout=30)
-    logger.info("[Frequency] _validate HTTP %s — %s", resp.status_code, resp.text[:500])
+    logger.info("[Frequency] _validate HTTP %s", resp.status_code)
     _raise_for_status(resp, "validate")
     return resp
 
@@ -192,9 +187,7 @@ def _validate(base_url: str, client: str, token: str) -> requests.Response:
 def _create_draft(base_url: str, app_id: str, headers: dict, cookies: dict) -> dict:
     url = f"{base_url}/application/{app_id}/draft"
     resp = requests.post(url, json={}, headers=headers, cookies=cookies, timeout=30)
-    logger.info(
-        "[Frequency] _create_draft HTTP %s — %s", resp.status_code, resp.text[:500]
-    )
+    logger.info("[Frequency] _create_draft HTTP %s", resp.status_code)
     _raise_for_status(resp, "create draft")
     return resp.json()
 
@@ -218,9 +211,7 @@ def _upload_creative(
         "applicationId": str(app_id),
     }
     resp = requests.post(url, files=files, data=data, headers=headers, cookies=cookies, timeout=120)
-    logger.info(
-        "[Frequency] _upload_creative HTTP %s — %s", resp.status_code, resp.text[:500]
-    )
+    logger.info("[Frequency] _upload_creative HTTP %s", resp.status_code)
     _raise_for_status(resp, "upload creative")
     return resp.json()
 
@@ -243,9 +234,7 @@ def _attach_creative(
         "rowIndex": 0,
     }
     resp = requests.post(url, json=body, headers=headers, cookies=cookies, timeout=30)
-    logger.info(
-        "[Frequency] _attach_creative HTTP %s — %s", resp.status_code, resp.text[:500]
-    )
+    logger.info("[Frequency] _attach_creative HTTP %s", resp.status_code)
     _raise_for_status(resp, "attach creative")
 
 
@@ -256,9 +245,7 @@ def _publish_draft(
     today = datetime.now(timezone.utc).strftime("%d/%m/%Y")
     body = {"schedulePublishDate": today}
     resp = requests.post(url, json=body, headers=headers, cookies=cookies, timeout=30)
-    logger.info(
-        "[Frequency] _publish_draft HTTP %s — %s", resp.status_code, resp.text[:500]
-    )
+    logger.info("[Frequency] _publish_draft HTTP %s", resp.status_code)
     _raise_for_status(resp, "publish draft")
     return resp.text
 
