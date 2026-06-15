@@ -41,27 +41,16 @@ YESTERDAY'S MATCHES:
 TOP SCORERS:
 {top_scorers_formatted}
 
-AD TAG (use this verbatim at the end):
-{ad_tag}
-
 {pronunciation_section}\
 {tone_guidance}\
 INSTRUCTIONS:
-- The ad tag above is MANDATORY and must appear verbatim as the final words — do not change a single word
-- Write World Cup coverage of STRICTLY NO MORE THAN {body_words} words, then append the ad tag exactly as written
-- Total script must not exceed {target_words} words (= {target_seconds} seconds) — going over will cut the ad off on air
+- Write STRICTLY NO MORE THAN {target_words} words (= {target_seconds} seconds) — going over will cut the ad off on air
 - Open with yesterday's World Cup action — lead with the most exciting result or live match
 - {fixture_mention_guidance}
-- Write a smooth transition from the World Cup coverage into the ad tag
-=======
 - Write a natural, conversational script that fills but does NOT exceed {target_seconds} seconds when read aloud at a normal pace (hard maximum: {target_words} words)
-- Open with yesterday's World Cup action — lead with the most exciting result or live match
-- {fixture_mention_guidance}
-- Write a smooth transition from the football news to the advertiser
-- Close with the advertiser name, tagline, and call to action
 - Do not use any formatting, headers, or stage directions — plain flowing text only
 - Write as if an enthusiastic local radio host is speaking
-{pronunciation_instruction}\
+- End the script naturally — do not add a sign-off, tagline, or call to action
 - Output only the final script, nothing else\
 """
 
