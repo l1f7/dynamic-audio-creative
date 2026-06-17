@@ -31,7 +31,7 @@ _SOCCER_TIERS = [
 ]
 
 DEFAULT_PROMPT_TEMPLATE = """\
-You are writing a short radio ad script for the 2026 World Cup.
+You are writing a short radio ad script for the 2026 International Soccer Tournament.
 
 DATES: {match_date}
 
@@ -45,7 +45,7 @@ TOP SCORERS:
 {tone_guidance}\
 INSTRUCTIONS:
 - Write STRICTLY NO MORE THAN {target_words} words (= {target_seconds} seconds) — going over will cut the ad off on air
-- Open with yesterday's World Cup action — lead with the most exciting result or live match
+- Open with yesterday's International Soccer action — lead with the most exciting result or live match
 - {fixture_mention_guidance}
 - Write a natural, conversational script that fills but does NOT exceed {target_seconds} seconds when read aloud at a normal pace (hard maximum: {target_words} words)
 - Do not use any formatting, headers, or stage directions — plain flowing text only
@@ -81,7 +81,7 @@ class WorldCupFeed(BaseFeed):
         match_date = data.get("date", datetime.now(timezone.utc).date().isoformat())
 
         if not fixtures and not top_scorers:
-            raise FeedFetchError("No World Cup data for today.")
+            raise FeedFetchError("No update data for today.")
 
         return _build_template_vars(fixtures, top_scorers, match_date)
 
