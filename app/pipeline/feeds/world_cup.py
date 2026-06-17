@@ -1,4 +1,4 @@
-"""World Cup feed — uses the /yesterday proxy endpoint.
+"""International Soccer feed — uses the /yesterday proxy endpoint.
 
 Calls the internal API proxy's /yesterday route, which returns yesterday's fixtures
 (with goal scorers) and the current top-scorer table. No Claude extraction
@@ -56,25 +56,29 @@ INSTRUCTIONS:
 
 
 class WorldCupFeed(BaseFeed):
-    """Fetches World Cup fixtures from the configured feed URL."""
+    """Fetches International Soccer fixtures from the configured feed URL."""
 
     def fetch(self, campaign) -> dict:
         feed_url = campaign.feed_url
         if not feed_url:
             raise FeedFetchError("No feed URL configured for this campaign.")
 
-        logger.info("Fetching World Cup data from %s...", feed_url)
+        logger.info("Fetching International Soccer data from %s...", feed_url)
 
         try:
             resp = requests.get(feed_url, timeout=15)
             resp.raise_for_status()
         except requests.RequestException as exc:
-            raise FeedFetchError(f"World Cup feed fetch failed: {exc}") from exc
+            raise FeedFetchError(
+                f"International Soccer feed fetch failed: {exc}"
+            ) from exc
 
         try:
             data = resp.json()
         except ValueError as exc:
-            raise FeedFetchError(f"Invalid JSON from World Cup feed: {exc}") from exc
+            raise FeedFetchError(
+                f"Invalid JSON from International Soccer feed: {exc}"
+            ) from exc
 
         fixtures = data.get("fixtures", [])
         top_scorers = data.get("top_scorers", [])
