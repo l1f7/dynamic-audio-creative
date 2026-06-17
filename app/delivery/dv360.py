@@ -223,6 +223,7 @@ def _create_creative(
     url = _CREATIVES_URL.format(advertiser_id=advertiser_id)
     body = {
         "displayName": display_name,
+        "entityStatus": "ENTITY_STATUS_ACTIVE",
         "creativeType": "CREATIVE_TYPE_AUDIO",
         "hostingSource": "HOSTING_SOURCE_HOSTED",
         "assets": [
