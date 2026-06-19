@@ -52,6 +52,12 @@
                 {% else %}
                     <span class="badge badge-status-running">{{ run.status_label }}</span>
                 {% endif %}
+                {% if run.is_heavily_stretched %}
+                    <span class="badge bg-warning text-dark"
+                          title="Voiceover sped up {{ run.stretch_pct }}% to fit the target duration">
+                        &#9201; Stretched +{{ run.stretch_pct }}%
+                    </span>
+                {% endif %}
             </td>
             <td>{{ run.triggered_by }}</td>
             <td>{{ run.created_at.strftime('%Y-%m-%d %H:%M') if run.created_at else '' }}</td>

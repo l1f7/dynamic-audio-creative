@@ -85,7 +85,7 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
         # 5. Mix with music bed
         _update_status(ad_run, "mixing")
         music_bytes = _get_music_bed(campaign)
-        final_bytes = mix_audio(
+        final_bytes, stretch_factor = mix_audio(
             music_bed_bytes=music_bytes,
             voiceover_bytes=vo_bytes,
             intro_seconds=campaign.intro_seconds,
@@ -94,6 +94,7 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
             duck_fade=campaign.duck_fade,
             target_seconds=campaign.target_seconds,
         )
+        ad_run.stretch_factor = stretch_factor
 
         # 6. Save outputs
         _update_status(ad_run, "uploading")
@@ -233,7 +234,7 @@ def rerun_from_script(source_run_id: int, script: str, deliver_frequency: bool =
 
         _update_status(new_run, "mixing")
         music_bytes = _get_music_bed(campaign)
-        final_bytes = mix_audio(
+        final_bytes, stretch_factor = mix_audio(
             music_bed_bytes=music_bytes,
             voiceover_bytes=vo_bytes,
             intro_seconds=campaign.intro_seconds,
@@ -242,6 +243,7 @@ def rerun_from_script(source_run_id: int, script: str, deliver_frequency: bool =
             duck_fade=campaign.duck_fade,
             target_seconds=campaign.target_seconds,
         )
+        new_run.stretch_factor = stretch_factor
 
         _update_status(new_run, "uploading")
         _save_outputs(new_run, vo_bytes, final_bytes)

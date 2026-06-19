@@ -20,6 +20,12 @@
         {% else %}
             <span class="badge badge-status-running fs-6">{{ run.status_label }}</span>
         {% endif %}
+        {% if run.is_heavily_stretched %}
+            <span class="badge bg-warning text-dark fs-6"
+                  title="Voiceover sped up {{ run.stretch_pct }}% to fit the target duration">
+                &#9201; Stretched +{{ run.stretch_pct }}%
+            </span>
+        {% endif %}
         <form method="post" action="{{ url_for('admin.run_delete', run_id=run.id) }}" class="d-inline"
               onsubmit="return confirm('Delete run #{{ run.id }}? This cannot be undone.')">
             <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>

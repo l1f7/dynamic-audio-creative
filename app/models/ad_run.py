@@ -35,6 +35,11 @@ class AdRun(db.Model):
     # Script text (kept for review)
     script_text = db.Column(db.Text, nullable=True)
 
+    # Time-stretch applied during mixing to fit the campaign target duration.
+    # Factor is the FFmpeg atempo applied (>1.0 = sped up / compressed).
+    # Null means no stretching ran (e.g. voiceover already within target).
+    stretch_factor = db.Column(db.Float, nullable=True)
+
     # Feed data snapshot (for debugging)
     feed_data_snapshot = db.Column(db.JSON, nullable=True)
 
@@ -61,10 +66,28 @@ class AdRun(db.Model):
     # Relationships
     campaign = db.relationship("Campaign", back_populates="ad_runs")
 
+    # Flag the audio as heavily retimed once it's been sped up by more than this.
+    HEAVY_STRETCH_THRESHOLD = 1.10  # 10%
+
     @property
     def is_terminal(self):
         """Whether this run has reached a final state."""
         return self.status in ("complete", "failed")
+
+    @property
+    def stretch_pct(self):
+        """Percentage the voiceover was sped up, or None if not stretched.
+
+        e.g. a stretch_factor of 1.15 → 15 (15% faster).
+        """
+        if not self.stretch_factor:
+            return None
+        return round((self.stretch_factor - 1) * 100)
+
+    @property
+    def is_heavily_stretched(self):
+        """Whether the audio was time-stretched beyond the 10% threshold."""
+        return bool(self.stretch_factor) and self.stretch_factor > self.HEAVY_STRETCH_THRESHOLD
 
     @property
     def status_label(self):

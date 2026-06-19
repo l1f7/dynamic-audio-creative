@@ -13,9 +13,6 @@ from app.pipeline.exceptions import MixingError
 logger = logging.getLogger(__name__)
 
 
-_OVERTIME_TOLERANCE = 3.0  # seconds over target before flagging instead of stretching
-
-
 def mix_audio(
     music_bed_bytes: bytes,
     voiceover_bytes: bytes,
@@ -24,7 +21,7 @@ def mix_audio(
     duck_volume: float = 0.2,
     duck_fade: float = 0.5,
     target_seconds: float | None = None,
-) -> bytes:
+) -> tuple[bytes, float]:
     """Mix voiceover with a music bed and return the final ad as bytes.
 
     Args:
@@ -34,17 +31,20 @@ def mix_audio(
         outro_seconds: Music fades back up then out after voice ends.
         duck_volume: Music volume during voiceover (0.0-1.0).
         duck_fade: Seconds to ramp between full and ducked volume.
-        target_seconds: Target final ad duration. If the voiceover would push
-            the final ad over this by up to _OVERTIME_TOLERANCE seconds, the
-            voiceover is time-stretched to fit. Further over is flagged and
-            passed through untouched. None disables stretching.
+        target_seconds: Target final ad duration. Any voiceover that would push
+            the final ad over this is time-stretched to fit, regardless of how
+            far over it is (e.g. a 60s voiceover is retimed down to fit a 30s
+            target). None disables stretching.
 
     Returns:
-        Raw MP3 bytes of the final mixed ad.
+        A ``(final_ad_bytes, stretch_factor)`` tuple. ``stretch_factor`` is the
+        FFmpeg atempo applied to the voiceover to fit the target (>1.0 = sped
+        up); 1.0 when no stretching was needed.
 
     Raises:
         MixingError: If FFmpeg fails.
     """
+    stretch_factor = 1.0
     with tempfile.TemporaryDirectory() as tmpdir:
         vo_path = Path(tmpdir) / "voiceover.mp3"
         music_path = Path(tmpdir) / "music_bed.mp3"
@@ -76,32 +76,26 @@ def mix_audio(
             target_vo_duration = target_seconds - intro_seconds - outro_seconds
             final_ad_duration = vo_duration + intro_seconds + outro_seconds
             if vo_duration > target_vo_duration and target_vo_duration > 0:
-                if final_ad_duration <= target_seconds + _OVERTIME_TOLERANCE:
-                    atempo = vo_duration / target_vo_duration
-                    logger.info(
-                        "Stretching voiceover %.2fs → %.2fs (atempo=%.4f, final ad %.2fs → %.2fs)",
-                        vo_duration, target_vo_duration, atempo, final_ad_duration, target_seconds,
-                    )
-                    stretched_path = Path(tmpdir) / "voiceover_stretched.mp3"
-                    stretch_cmd = [
-                        "ffmpeg", "-y",
-                        "-i", str(vo_path),
-                        "-filter:a", f"atempo={atempo:.6f}",
-                        "-b:a", "192k",
-                        str(stretched_path),
-                    ]
-                    try:
-                        subprocess.run(stretch_cmd, capture_output=True, text=True, check=True)
-                    except subprocess.CalledProcessError as exc:
-                        raise MixingError(f"FFmpeg time-stretch failed: {exc.stderr}") from exc
-                    vo_path = stretched_path
-                    vo_duration = target_vo_duration
-                else:
-                    logger.warning(
-                        "Voiceover over-time: %.2fs voiceover gives %.2fs final ad "
-                        "(target %ds + %.0fs tolerance). Passing through untouched.",
-                        vo_duration, final_ad_duration, target_seconds, _OVERTIME_TOLERANCE,
-                    )
+                atempo = vo_duration / target_vo_duration
+                stretch_factor = atempo
+                logger.info(
+                    "Stretching voiceover %.2fs → %.2fs (atempo=%.4f, final ad %.2fs → %.2fs)",
+                    vo_duration, target_vo_duration, atempo, final_ad_duration, target_seconds,
+                )
+                stretched_path = Path(tmpdir) / "voiceover_stretched.mp3"
+                stretch_cmd = [
+                    "ffmpeg", "-y",
+                    "-i", str(vo_path),
+                    "-filter:a", f"atempo={atempo:.6f}",
+                    "-b:a", "192k",
+                    str(stretched_path),
+                ]
+                try:
+                    subprocess.run(stretch_cmd, capture_output=True, text=True, check=True)
+                except subprocess.CalledProcessError as exc:
+                    raise MixingError(f"FFmpeg time-stretch failed: {exc.stderr}") from exc
+                vo_path = stretched_path
+                vo_duration = target_vo_duration
 
         # Build the filter graph
         total_duration = intro_seconds + vo_duration + outro_seconds
@@ -150,4 +144,4 @@ def mix_audio(
 
         final_bytes = output_path.read_bytes()
         logger.info("Mixed audio: %d bytes", len(final_bytes))
-        return final_bytes
+        return final_bytes, stretch_factor
