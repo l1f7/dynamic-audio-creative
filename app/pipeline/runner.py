@@ -351,7 +351,13 @@ def _build_template_vars(campaign: Campaign, feed_data: dict) -> dict:
 
     # Pick one ad tag at random (if any are configured)
     tags = campaign.ad_tags or []
-    ad_tag = random.choice(tags) if tags else ""
+    if len(tags) > 1:
+        ad_tag = random.SystemRandom().choice(tags)
+        logger.info("Ad tag selected: %r (index %d of %d)", ad_tag, tags.index(ad_tag), len(tags))
+    elif tags:
+        ad_tag = tags[0]
+    else:
+        ad_tag = ""
     tag_words = len(ad_tag.split()) if ad_tag else 0
     body_words = max(10, campaign.target_words - tag_words)
 
