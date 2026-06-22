@@ -111,6 +111,9 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
     media_id = _upload_asset(access_token, dv360_advertiser_id, filename, final_ad_bytes)
     logger.info("[DV360] Step 1 OK — media_id=%s", media_id)
 
+    # Brief pause to let DV360 finish processing the uploaded asset.
+    time.sleep(2)
+
     # Step 2: Create audio creative
     display_name = f"{ad_run.campaign.name} — Run #{ad_run.id} — {ts}"
     website = advertiser.website or ""
