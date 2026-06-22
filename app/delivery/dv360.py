@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import tempfile
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -244,7 +245,9 @@ def _create_creative(
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
     }
-    resp = requests.post(url, json=body, headers=headers, timeout=30)
+    resp = _request_with_retry(
+        requests.post, url, "create creative", json=body, headers=headers, timeout=30,
+    )
     logger.info("[DV360] _create_creative HTTP %s", resp.status_code)
     _raise_for_status(resp, "create creative")
     data = resp.json()
@@ -269,12 +272,9 @@ def _assign_creative(
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
     }
-    resp = requests.patch(
-        url,
-        params={"updateMask": "creativeIds"},
-        json=body,
-        headers=headers,
-        timeout=30,
+    resp = _request_with_retry(
+        requests.patch, url, "assign creative to line item",
+        params={"updateMask": "creativeIds"}, json=body, headers=headers, timeout=30,
     )
     logger.info("[DV360] _assign_creative HTTP %s", resp.status_code)
     _raise_for_status(resp, "assign creative to line item")
@@ -314,6 +314,38 @@ def _write_multipart_related(
         raise
 
     return tmp_path, f"multipart/related; boundary={boundary}"
+
+
+_RETRYABLE_ERRORS = ("DFA_CONCURRENCY_ERROR", "INTERNAL", "RESOURCE_EXHAUSTED")
+_MAX_RETRIES = 4
+_BASE_DELAY = 2  # seconds
+
+
+def _is_retryable(resp: requests.Response) -> bool:
+    """Return True if the response is a transient error worth retrying."""
+    if resp.status_code in (429, 500, 502, 503):
+        return True
+    if resp.status_code == 400:
+        body = resp.text
+        return any(err in body for err in _RETRYABLE_ERRORS)
+    return False
+
+
+def _request_with_retry(method, url, step, **kwargs) -> requests.Response:
+    """Execute an HTTP request with exponential backoff on transient errors."""
+    for attempt in range(_MAX_RETRIES + 1):
+        resp = method(url, **kwargs)
+        if resp.ok or not _is_retryable(resp):
+            return resp
+        if attempt < _MAX_RETRIES:
+            delay = _BASE_DELAY * (2 ** attempt)
+            logger.warning(
+                "[DV360] %s transient error (HTTP %s), retrying in %ds (attempt %d/%d): %s",
+                step, resp.status_code, delay, attempt + 1, _MAX_RETRIES,
+                resp.text[:200],
+            )
+            time.sleep(delay)
+    return resp  # final attempt failed — caller will raise
 
 
 def _raise_for_status(resp: requests.Response, step: str) -> None:
