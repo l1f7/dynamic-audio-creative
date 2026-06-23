@@ -328,7 +328,7 @@ def _is_retryable(resp: requests.Response) -> bool:
     """Return True if the response is a transient error worth retrying."""
     if resp.status_code in (429, 500, 502, 503):
         return True
-    if resp.status_code == 400:
+    if resp.status_code in (400, 409):
         body = resp.text
         return any(err in body for err in _RETRYABLE_ERRORS)
     return False
