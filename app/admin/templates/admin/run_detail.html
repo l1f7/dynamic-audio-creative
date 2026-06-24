@@ -46,6 +46,35 @@
 </div>
 {% endif %}
 
+{% if run.status == 'complete' and run.final_ad_s3_key %}
+{% set has_frequency = run.campaign.delivery_enabled and run.campaign.frequency_app_id %}
+{% set has_dv360 = run.campaign.dv360_enabled and run.campaign.dv360_line_item_id %}
+{% if has_frequency or has_dv360 %}
+<div class="card mb-4">
+    <div class="card-header">Resubmit Delivery</div>
+    <div class="card-body">
+        <form method="post" action="{{ url_for('admin.run_redeliver', run_id=run.id) }}">
+            {% if has_frequency %}
+            <div class="form-check form-check-inline mb-3">
+                <input class="form-check-input" type="checkbox" name="deliver_frequency" id="redeliver_frequency" value="1">
+                <label class="form-check-label" for="redeliver_frequency">Frequency</label>
+            </div>
+            {% endif %}
+            {% if has_dv360 %}
+            <div class="form-check form-check-inline mb-3">
+                <input class="form-check-input" type="checkbox" name="deliver_dv360" id="redeliver_dv360" value="1">
+                <label class="form-check-label" for="redeliver_dv360">DV360</label>
+            </div>
+            {% endif %}
+            <div>
+                <button type="submit" class="btn btn-outline-primary">Resubmit</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endif %}
+
 {% if run.script_text %}
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">

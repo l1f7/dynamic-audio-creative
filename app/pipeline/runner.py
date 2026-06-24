@@ -318,6 +318,99 @@ def rerun_from_script(source_run_id: int, script: str, deliver_frequency: bool =
     return new_run
 
 
+def redeliver(run_id: int, deliver_frequency: bool = False, deliver_dv360: bool = False) -> AdRun:
+    """Re-deliver an existing completed run's audio to Frequency and/or DV360.
+
+    Does not regenerate voiceover or remix — just re-submits the final ad.
+    """
+    ad_run = db.session.get(AdRun, run_id)
+    if not ad_run:
+        raise ValueError(f"Run {run_id} not found")
+    if not ad_run.final_ad_s3_key:
+        raise PipelineError(f"Run {run_id} has no final audio to deliver")
+
+    campaign = ad_run.campaign
+
+    # Load the final ad bytes
+    final_bytes = _load_final_ad(ad_run)
+
+    if deliver_frequency:
+        if not (campaign.delivery_enabled and campaign.frequency_app_id):
+            logger.warning("[Frequency] SKIP redeliver run #%d — not configured", ad_run.id)
+        else:
+            from app.delivery.frequency import (
+                deliver_ad,
+                is_delivery_available,
+                FrequencyDeliveryError,
+                FrequencyNotConfiguredError,
+            )
+            if not is_delivery_available():
+                logger.warning("[Frequency] SKIP redeliver run #%d — delivery not available", ad_run.id)
+            else:
+                _update_status(ad_run, "delivering")
+                try:
+                    vast_xml = deliver_ad(ad_run, final_bytes)
+                    ad_run.vast_response = vast_xml
+                    ad_run.delivered_at = datetime.now(timezone.utc)
+                    ad_run.delivery_reference = "frequency"
+                    ad_run.delivery_error = None
+                    db.session.commit()
+                    logger.info("[Frequency] Redelivered successfully for run #%d", ad_run.id)
+                except (FrequencyDeliveryError, FrequencyNotConfiguredError) as exc:
+                    ad_run.delivery_error = str(exc)
+                    db.session.commit()
+                    logger.error("[Frequency] Redelivery FAILED for run #%d: %s", ad_run.id, exc)
+
+    if deliver_dv360:
+        if not (campaign.dv360_enabled and campaign.dv360_line_item_id):
+            logger.warning("[DV360] SKIP redeliver run #%d — not configured", ad_run.id)
+        else:
+            from app.delivery.dv360 import (
+                deliver_ad as dv360_deliver_ad,
+                is_delivery_available as dv360_available,
+                DV360DeliveryError,
+                DV360NotConfiguredError,
+            )
+            if not dv360_available():
+                logger.warning("[DV360] SKIP redeliver run #%d — DV360 not available", ad_run.id)
+            else:
+                _update_status(ad_run, "delivering")
+                try:
+                    creative_name = dv360_deliver_ad(ad_run, final_bytes)
+                    ad_run.dv360_delivered_at = datetime.now(timezone.utc)
+                    ad_run.dv360_creative_name = creative_name
+                    ad_run.dv360_delivery_error = None
+                    db.session.commit()
+                    logger.info("[DV360] Redelivered successfully for run #%d — %s", ad_run.id, creative_name)
+                except (DV360DeliveryError, DV360NotConfiguredError) as exc:
+                    ad_run.dv360_delivery_error = str(exc)
+                    db.session.commit()
+                    logger.error("[DV360] Redelivery FAILED for run #%d: %s", ad_run.id, exc)
+
+    ad_run.status = "complete"
+    db.session.commit()
+    logger.info("Redelivery complete for run #%d", ad_run.id)
+
+    return ad_run
+
+
+def _load_final_ad(ad_run: AdRun) -> bytes:
+    """Load the final ad audio bytes from S3 or local file."""
+    key = ad_run.final_ad_s3_key
+
+    # Local file (dev)
+    if os.path.isfile(key):
+        with open(key, "rb") as f:
+            return f.read()
+
+    # S3
+    try:
+        from app.storage import s3
+        return s3.download(key)
+    except Exception as exc:
+        raise PipelineError(f"Failed to load final ad audio: {exc}") from exc
+
+
 def _update_status(ad_run: AdRun, status: str):
     """Update run status and commit."""
     ad_run.status = status

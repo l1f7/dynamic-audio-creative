@@ -448,6 +448,47 @@ def run_delete(run_id):
     return redirect(url_for("admin.campaign_detail", campaign_id=campaign_id))
 
 
+@admin_bp.route("/runs/<int:run_id>/redeliver", methods=["POST"])
+@login_required
+def run_redeliver(run_id):
+    """Re-deliver an existing run's audio to Frequency and/or DV360."""
+    ad_run = AdRun.query.get_or_404(run_id)
+
+    if not ad_run.final_ad_s3_key:
+        flash("No audio available to resubmit.", "danger")
+        return redirect(url_for("admin.run_detail", run_id=run_id))
+
+    deliver_frequency = bool(request.form.get("deliver_frequency"))
+    deliver_dv360 = bool(request.form.get("deliver_dv360"))
+
+    if not deliver_frequency and not deliver_dv360:
+        flash("Select at least one delivery target.", "warning")
+        return redirect(url_for("admin.run_detail", run_id=run_id))
+
+    from app.pipeline.runner import redeliver
+    redeliver(run_id, deliver_frequency=deliver_frequency, deliver_dv360=deliver_dv360)
+
+    # Refresh to pick up any error fields
+    db.session.refresh(ad_run)
+    errors = []
+    if deliver_frequency and ad_run.delivery_error:
+        errors.append(f"Frequency: {ad_run.delivery_error}")
+    if deliver_dv360 and ad_run.dv360_delivery_error:
+        errors.append(f"DV360: {ad_run.dv360_delivery_error}")
+
+    if errors:
+        flash("Resubmit failed: " + "; ".join(errors), "danger")
+    else:
+        targets = []
+        if deliver_frequency:
+            targets.append("Frequency")
+        if deliver_dv360:
+            targets.append("DV360")
+        flash(f"Resubmitted to {' and '.join(targets)}.", "success")
+
+    return redirect(url_for("admin.run_detail", run_id=run_id))
+
+
 @admin_bp.route("/runs/<int:run_id>/regenerate", methods=["POST"])
 @login_required
 def run_regenerate(run_id):
