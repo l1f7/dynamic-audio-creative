@@ -20,6 +20,10 @@ SYSTEM_MESSAGE = (
     "will cause the ad to be cut off on air."
 )
 
+MAX_EVAL_RETRIES = 2
+LENGTH_MIN_RATIO = 0.90
+LENGTH_MAX_RATIO = 1.05
+
 
 def generate_script(prompt_template: str, template_vars: dict) -> str:
     """Generate a radio ad script via Claude.
@@ -47,23 +51,77 @@ def generate_script(prompt_template: str, template_vars: dict) -> str:
         api_key=current_app.config["ANTHROPIC_API_KEY"]
     )
 
-    try:
-        response = client.messages.create(
-            model=current_app.config["CLAUDE_MODEL"],
-            max_tokens=max_tokens,
-            system=SYSTEM_MESSAGE,
-            messages=[{"role": "user", "content": user_message}],
-        )
-    except anthropic.APIError as exc:
-        raise ScriptGenerationError(f"Claude API call failed: {exc}") from exc
-
-    script = response.content[0].text.strip()
-    script = _clean_script(script)
     ad_tag = template_vars.get("ad_tag", "").strip()
+    messages = [{"role": "user", "content": user_message}]
+
+    for attempt in range(1 + MAX_EVAL_RETRIES):
+        try:
+            response = client.messages.create(
+                model=current_app.config["CLAUDE_MODEL"],
+                max_tokens=max_tokens,
+                system=SYSTEM_MESSAGE,
+                messages=messages,
+            )
+        except anthropic.APIError as exc:
+            raise ScriptGenerationError(f"Claude API call failed: {exc}") from exc
+
+        script = response.content[0].text.strip()
+        script = _clean_script(script)
+
+        word_count = _count_script_words(script, ad_tag)
+        length_ok, feedback = _evaluate_length(word_count, target_words)
+
+        if length_ok or attempt == MAX_EVAL_RETRIES:
+            if not length_ok:
+                logger.warning(
+                    "Script still outside target after %d retries (%d words, target %d). "
+                    "Falling back to truncation.",
+                    MAX_EVAL_RETRIES, word_count, target_words,
+                )
+            break
+
+        logger.info(
+            "Script evaluation (attempt %d): %d words, target %d — %s. Retrying.",
+            attempt + 1, word_count, target_words, feedback,
+        )
+        messages.append({"role": "assistant", "content": script})
+        messages.append({"role": "user", "content": feedback})
+
     script = _truncate_to_word_limit(script, target_words, ad_tag)
     logger.info("Script generated (%d words, %d chars)",
                 len(script.split()), len(script))
     return script
+
+
+def _count_script_words(script: str, ad_tag: str) -> int:
+    """Count words in the script body, excluding the ad tag."""
+    body = script
+    if ad_tag and body.endswith(ad_tag):
+        body = body[: -len(ad_tag)].strip()
+    return len(body.split())
+
+
+def _evaluate_length(word_count: int, target_words: int) -> tuple[bool, str]:
+    """Check whether word_count falls within the acceptable range.
+
+    Returns (is_acceptable, feedback_message).
+    """
+    min_words = int(target_words * LENGTH_MIN_RATIO)
+    max_words = int(target_words * LENGTH_MAX_RATIO)
+
+    if word_count < min_words:
+        return False, (
+            f"Too short — the script is {word_count} words but must be between "
+            f"{min_words} and {max_words} words. Add more detail to reach "
+            f"at least {min_words} words."
+        )
+    if word_count > max_words:
+        return False, (
+            f"Too long — the script is {word_count} words but must be between "
+            f"{min_words} and {max_words} words. Tighten the copy to stay under "
+            f"{max_words} words."
+        )
+    return True, "ok"
 
 
 def _truncate_to_word_limit(text: str, max_words: int, protected_tag: str = "") -> str:
