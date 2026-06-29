@@ -249,7 +249,7 @@ def _create_creative(
         "Content-Type": "application/json",
     }
     resp = _request_with_retry(
-        requests.post, url, "create creative", json=body, headers=headers, timeout=30,
+        requests.post, url, "create creative", json=body, headers=headers, timeout=15,
     )
     logger.info("[DV360] _create_creative HTTP %s", resp.status_code)
     _raise_for_status(resp, "create creative")
@@ -277,7 +277,7 @@ def _assign_creative(
     }
     resp = _request_with_retry(
         requests.patch, url, "assign creative to line item",
-        params={"updateMask": "creativeIds"}, json=body, headers=headers, timeout=30,
+        params={"updateMask": "creativeIds"}, json=body, headers=headers, timeout=15,
     )
     logger.info("[DV360] _assign_creative HTTP %s", resp.status_code)
     _raise_for_status(resp, "assign creative to line item")
@@ -320,7 +320,7 @@ def _write_multipart_related(
 
 
 _RETRYABLE_ERRORS = ("DFA_CONCURRENCY_ERROR", "INTERNAL", "RESOURCE_EXHAUSTED")
-_MAX_RETRIES = 4
+_MAX_RETRIES = 2
 _BASE_DELAY = 2  # seconds
 
 
