@@ -350,6 +350,7 @@ def yesterday():
         for f in fixtures:
             f["goal_scorers"] = scorers_by_id.get(f["fixture_id"], [])
 
+    fixtures.sort(key=lambda f: f["date"] or "", reverse=True)
     return jsonify({"date": yesterday_date, "fixtures": fixtures})
 
 
