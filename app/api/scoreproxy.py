@@ -15,6 +15,7 @@ Requires API_FOOTBALL_KEY environment variable.
 import os
 import requests
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from flask import jsonify, request
 
@@ -335,7 +336,7 @@ def yesterday():
     auth_error = _check_secret()
     if auth_error:
         return auth_error
-    yesterday_date = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
+    yesterday_date = (datetime.now(ZoneInfo("US/Eastern")) - timedelta(days=1)).date().isoformat()
 
     if _is_testing():
         yesterday_date = "2026-06-16"
