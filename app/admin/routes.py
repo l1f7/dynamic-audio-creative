@@ -340,7 +340,7 @@ def campaign_new():
             cta=form.cta.data or None,
             seasonal_hook=form.seasonal_hook.data or None,
             voice_preset=form.voice_preset.data or None,
-            voice_custom_id=form.voice_custom_id.data.strip() or None,
+            voice_custom_id=(form.voice_custom_id.data or "").strip() or None,
             intro_seconds=form.intro_seconds.data,
             outro_seconds=form.outro_seconds.data,
             duck_volume=form.duck_volume.data,
