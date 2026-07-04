@@ -34,6 +34,8 @@ class AdRun(db.Model):
 
     # Script text (kept for review)
     script_text = db.Column(db.Text, nullable=True)
+    # Where the script came from: "feed", "fallback", or "manual_override"
+    script_source = db.Column(db.String(20), nullable=True)
 
     # Time-stretch applied during mixing to fit the campaign target duration.
     # Factor is the FFmpeg atempo applied (>1.0 = sped up / compressed).

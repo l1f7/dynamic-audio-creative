@@ -406,6 +406,37 @@ def campaign_generate(campaign_id):
     return redirect(url_for("admin.campaign_detail", campaign_id=campaign.id))
 
 
+@admin_bp.route("/campaigns/<int:campaign_id>/override", methods=["POST"])
+@login_required
+def campaign_stage_override(campaign_id):
+    """Stage a manual override script to be used for the campaign's next run."""
+    campaign = Campaign.query.get_or_404(campaign_id)
+    script = request.form.get("manual_override_script", "").strip()
+
+    if not script:
+        flash("Enter a script to stage an override.", "danger")
+        return redirect(url_for("admin.campaign_detail", campaign_id=campaign.id))
+
+    campaign.manual_override_script = script
+    campaign.use_manual_override = True
+    db.session.commit()
+
+    flash("Override staged — the next run (manual or cron) will use this script instead of the feed.", "success")
+    return redirect(url_for("admin.campaign_detail", campaign_id=campaign.id))
+
+
+@admin_bp.route("/campaigns/<int:campaign_id>/override/cancel", methods=["POST"])
+@login_required
+def campaign_cancel_override(campaign_id):
+    """Cancel a staged override before it's consumed by a run."""
+    campaign = Campaign.query.get_or_404(campaign_id)
+    campaign.use_manual_override = False
+    db.session.commit()
+
+    flash("Override cancelled — the next run will generate from the feed as usual.", "info")
+    return redirect(url_for("admin.campaign_detail", campaign_id=campaign.id))
+
+
 @admin_bp.route("/runs/<int:run_id>")
 @login_required
 def run_detail(run_id):

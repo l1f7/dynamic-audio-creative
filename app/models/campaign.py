@@ -59,6 +59,8 @@ class Campaign(db.Model):
     # Script settings
     prompt_template = db.Column(db.Text, nullable=True)
     fallback_script = db.Column(db.Text, nullable=True)  # used when feed has no data or errors
+    manual_override_script = db.Column(db.Text, nullable=True)  # staged script for the next run
+    use_manual_override = db.Column(db.Boolean, default=False, nullable=False)  # one-shot: consume on next run
     target_seconds = db.Column(db.Integer, default=30)
     target_words = db.Column(db.Integer, default=75)
     ad_tags = db.Column(db.JSON, nullable=True)  # list of exact outro/tag strings

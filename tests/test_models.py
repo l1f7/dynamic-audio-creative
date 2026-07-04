@@ -133,6 +133,21 @@ class TestCampaign:
         c = self._make_campaign(db, cron_schedule=None)
         assert c.cron_schedule is None
 
+    def test_manual_override_defaults(self, db):
+        """Override is off and unset by default — distinct from fallback_script."""
+        c = self._make_campaign(db)
+        assert c.use_manual_override is False
+        assert c.manual_override_script is None
+
+    def test_manual_override_can_be_staged(self, db):
+        c = self._make_campaign(
+            db,
+            manual_override_script="Big win for the home team last night...",
+            use_manual_override=True,
+        )
+        assert c.use_manual_override is True
+        assert "home team" in c.manual_override_script
+
 
 class TestPronunciationEntry:
     def test_create_entries(self, db):

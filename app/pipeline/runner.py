@@ -44,33 +44,48 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
     db.session.commit()
 
     try:
-        # 1. Fetch feed data + generate script (fallback if feed fails or is empty)
-        _update_status(ad_run, "fetching_data")
-        feed = get_feed(campaign.feed_type)
-        try:
-            feed_data = feed.fetch(campaign)
-            ad_run.feed_data_snapshot = feed_data
-            db.session.commit()
-
-            # 2. Build template vars
-            template_vars = _build_template_vars(campaign, feed_data)
-
-            # 3. Generate script
-            _update_status(ad_run, "generating_script")
-            prompt_template = campaign.prompt_template or feed.default_prompt_template()
-            script = generate_script(prompt_template, template_vars)
-            ad_run.script_text = script
-            db.session.commit()
-
-        except FeedFetchError as exc:
-            if not campaign.fallback_script:
-                raise
-            logger.warning(
-                "Run #%d: feed failed (%s) — using fallback script", ad_run.id, exc
+        # 1. Fetch feed data + generate script (fallback if feed fails or is empty),
+        # unless a manual override script is staged for this run.
+        if campaign.use_manual_override and (campaign.manual_override_script or "").strip():
+            logger.info(
+                "Run #%d: manual override armed — using staged script, skipping feed fetch",
+                ad_run.id,
             )
-            script = campaign.fallback_script
+            script = campaign.manual_override_script
             ad_run.script_text = script
+            ad_run.script_source = "manual_override"
+            # One-shot: consume the override so the next run generates normally.
+            campaign.use_manual_override = False
             db.session.commit()
+        else:
+            _update_status(ad_run, "fetching_data")
+            feed = get_feed(campaign.feed_type)
+            try:
+                feed_data = feed.fetch(campaign)
+                ad_run.feed_data_snapshot = feed_data
+                db.session.commit()
+
+                # 2. Build template vars
+                template_vars = _build_template_vars(campaign, feed_data)
+
+                # 3. Generate script
+                _update_status(ad_run, "generating_script")
+                prompt_template = campaign.prompt_template or feed.default_prompt_template()
+                script = generate_script(prompt_template, template_vars)
+                ad_run.script_text = script
+                ad_run.script_source = "feed"
+                db.session.commit()
+
+            except FeedFetchError as exc:
+                if not campaign.fallback_script:
+                    raise
+                logger.warning(
+                    "Run #%d: feed failed (%s) — using fallback script", ad_run.id, exc
+                )
+                script = campaign.fallback_script
+                ad_run.script_text = script
+                ad_run.script_source = "fallback"
+                db.session.commit()
 
         # 4. Generate voiceover
         _update_status(ad_run, "generating_voiceover")
