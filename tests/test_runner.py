@@ -61,6 +61,29 @@ class TestManualOverride:
         # Staged text is left in place for reference — only the flag clears.
         assert campaign.manual_override_script == "Huge win last night for the home side."
 
+    def test_failed_run_leaves_override_armed(self, client, db, monkeypatch):
+        """A run that fails downstream of the script stage must not consume
+        the override — the retry should still use the staged script."""
+        _stub_audio_pipeline(monkeypatch)
+        monkeypatch.setattr(
+            runner_module, "_get_music_bed",
+            lambda campaign: (_ for _ in ()).throw(
+                runner_module.PipelineError("No music bed configured")
+            ),
+        )
+        campaign = _make_campaign(
+            db,
+            manual_override_script="Huge win last night for the home side.",
+            use_manual_override=True,
+        )
+
+        ad_run = run_pipeline(campaign.id, triggered_by="cron")
+        db.session.refresh(campaign)
+
+        assert ad_run.status == "failed"
+        assert ad_run.script_source == "manual_override"
+        assert campaign.use_manual_override is True
+
     def test_without_override_feed_failure_is_not_swallowed(self, client, db, monkeypatch):
         """Sanity check: without an armed override, a broken feed still fails the run."""
         _stub_audio_pipeline(monkeypatch)

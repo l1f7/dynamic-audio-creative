@@ -66,7 +66,7 @@
                 <button type="submit" class="btn btn-sm btn-outline-secondary">Cancel Override</button>
             </form>
         {% else %}
-            <p class="text-muted small mb-2">Know how the games played out and want to dictate the story yourself? Stage a script here — the campaign's next run will skip the feed and script generation and go straight to voiceover with this text.</p>
+            <p class="text-muted small mb-2">Want to control exactly what the next ad says? Stage a script here — the campaign's next run (manual or scheduled) will skip the feed and script generation and go straight to voiceover with this text. Used once, then cleared.</p>
             <form method="POST" action="{{ url_for('admin.campaign_stage_override', campaign_id=campaign.id) }}">
                 <textarea name="manual_override_script" class="form-control mb-2" rows="4" placeholder="Write the script for the next run...">{{ campaign.manual_override_script or '' }}</textarea>
                 <button type="submit" class="btn btn-sm btn-warning">Stage Override for Next Run</button>

@@ -54,8 +54,6 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
             script = campaign.manual_override_script
             ad_run.script_text = script
             ad_run.script_source = "manual_override"
-            # One-shot: consume the override so the next run generates normally.
-            campaign.use_manual_override = False
             db.session.commit()
         else:
             _update_status(ad_run, "fetching_data")
@@ -195,6 +193,10 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
         # 9. Done
         ad_run.status = "complete"
         ad_run.completed_at = datetime.now(timezone.utc)
+        # One-shot: consume the override only on success, so a failed run
+        # leaves it armed and a retry still uses the staged script.
+        if ad_run.script_source == "manual_override":
+            campaign.use_manual_override = False
         db.session.commit()
 
         logger.info("Pipeline complete for run #%d", ad_run.id)
