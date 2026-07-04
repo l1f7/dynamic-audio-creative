@@ -4,6 +4,11 @@ Revision ID: e6f7a8b9c0d1
 Revises: d4e5f6a7b8c9
 Create Date: 2026-06-05 00:00:00.000000
 
+NOTE: This revision duplicated d4e5f6a7b8c9, which already adds
+advertisers.dv360_service_account_json. Databases migrated before this
+was made a no-op already have the revision recorded, so Alembic skips
+it; on a fresh database the original body crashed with "duplicate
+column name". Kept as a no-op to preserve the revision chain.
 """
 from alembic import op
 import sqlalchemy as sa
@@ -16,10 +21,10 @@ depends_on = None
 
 
 def upgrade():
-    with op.batch_alter_table('advertisers', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('dv360_service_account_json', sa.Text(), nullable=True))
+    # No-op: d4e5f6a7b8c9 already added this column.
+    pass
 
 
 def downgrade():
-    with op.batch_alter_table('advertisers', schema=None) as batch_op:
-        batch_op.drop_column('dv360_service_account_json')
+    # No-op: the column is dropped by d4e5f6a7b8c9's downgrade.
+    pass
