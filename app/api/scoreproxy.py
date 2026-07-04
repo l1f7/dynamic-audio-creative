@@ -336,7 +336,7 @@ def yesterday():
     auth_error = _check_secret()
     if auth_error:
         return auth_error
-    yesterday_date = (datetime.now(ZoneInfo("US/Eastern")) - timedelta(days=1)).date().isoformat()
+    yesterday_date = (datetime.now(ZoneInfo("America/Los_Angeles")) - timedelta(days=1)).date().isoformat()
 
     if _is_testing():
         yesterday_date = "2026-06-16"
