@@ -52,12 +52,13 @@
 </div>
 
 <div class="card mb-4">
-    <div class="card-header">
+    <details{% if campaign.use_manual_override %} open{% endif %}>
+    <summary class="card-header" style="cursor: pointer;">
         Manual Script Override
         {% if campaign.use_manual_override %}
             <span class="badge bg-warning text-dark ms-2">Armed — next run</span>
         {% endif %}
-    </div>
+    </summary>
     <div class="card-body">
         {% if campaign.use_manual_override %}
             <p class="text-muted small mb-2">This script will be used for the next run (manual or cron) instead of fetching the feed. It clears itself after that run.</p>
@@ -73,24 +74,8 @@
             </form>
         {% endif %}
     </div>
+    </details>
 </div>
-
-{% if campaign.pronunciation_entries %}
-<div class="card mb-4">
-    <div class="card-header" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#pron-drawer" aria-expanded="false" aria-controls="pron-drawer">
-        Pronunciation Guide
-        <span class="text-muted small ms-2">({{ campaign.pronunciation_entries | length }})</span>
-        <span class="float-end text-muted small">&#9660;</span>
-    </div>
-    <div class="collapse" id="pron-drawer">
-        <div class="card-body">
-            {% for entry in campaign.pronunciation_entries %}
-            <span class="badge bg-light text-dark border me-1 mb-1">"{{ entry.written_form }}" &rarr; "{{ entry.spoken_form }}"</span>
-            {% endfor %}
-        </div>
-    </div>
-</div>
-{% endif %}
 
 <!-- Runs -->
 <h4 class="mt-4 mb-3">Recent Runs</h4>
