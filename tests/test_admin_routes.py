@@ -242,6 +242,90 @@ class TestCampaignCRUD:
         assert c is not None
         assert c.feed_type == "real_estate"
 
+    def test_create_campaign_with_feed_filter(self, authenticated_client):
+        adv = self._create_advertiser()
+
+        resp = authenticated_client.post(
+            "/admin/campaigns/new",
+            data={
+                "name": "Filtered Feed",
+                "advertiser_id": adv.id,
+                "feed_type": "concerts",
+                "feed_filter_key": "promoter_presents",
+                "feed_filter_contains": "Vancouver Is Funny",
+                "intro_seconds": 2.0,
+                "outro_seconds": 2.0,
+                "duck_volume": 0.2,
+                "duck_fade": 0.5,
+                "target_seconds": 30,
+                "target_words": 75,
+            },
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+
+        c = Campaign.query.filter_by(name="Filtered Feed").first()
+        assert c.feed_config == {
+            "filter_key": "promoter_presents",
+            "filter_contains": "Vancouver Is Funny",
+        }
+
+    def test_edit_campaign_clears_filter_preserves_other_config(self, authenticated_client):
+        adv = self._create_advertiser()
+        c = Campaign(
+            name="Filter Edit Test",
+            advertiser_id=adv.id,
+            feed_type="concerts",
+            feed_config={
+                "max_shows": 5,
+                "filter_key": "promoter_presents",
+                "filter_contains": "Vancouver Is Funny",
+            },
+        )
+        db.session.add(c)
+        db.session.commit()
+
+        resp = authenticated_client.post(
+            f"/admin/campaigns/{c.id}/edit",
+            data={
+                "name": "Filter Edit Test",
+                "advertiser_id": adv.id,
+                "feed_type": "concerts",
+                "feed_filter_key": "",
+                "feed_filter_contains": "",
+                "intro_seconds": 2.0,
+                "outro_seconds": 2.0,
+                "duck_volume": 0.2,
+                "duck_fade": 0.5,
+                "target_seconds": 30,
+                "target_words": 75,
+            },
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+
+        c = db.session.get(Campaign, c.id)
+        assert c.feed_config == {"max_shows": 5}
+
+    def test_edit_form_shows_existing_filter(self, authenticated_client):
+        adv = self._create_advertiser()
+        c = Campaign(
+            name="Filter Display Test",
+            advertiser_id=adv.id,
+            feed_type="concerts",
+            feed_config={
+                "filter_key": "promoter_presents",
+                "filter_contains": "Vancouver Is Funny",
+            },
+        )
+        db.session.add(c)
+        db.session.commit()
+
+        resp = authenticated_client.get(f"/admin/campaigns/{c.id}/edit")
+        assert resp.status_code == 200
+        assert b"promoter_presents" in resp.data
+        assert b"Vancouver Is Funny" in resp.data
+
     def test_pronunciation_entries_saved(self, authenticated_client):
         adv = self._create_advertiser()
 

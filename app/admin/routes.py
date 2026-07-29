@@ -354,6 +354,7 @@ def campaign_new():
             dv360_enabled=form.dv360_enabled.data,
             dv360_line_item_id=form.dv360_line_item_id.data or None,
         )
+        _save_feed_filter_config(campaign, form)
         db.session.add(campaign)
         db.session.commit()
 
@@ -630,6 +631,11 @@ def campaign_edit(campaign_id):
         (a.id, a.name) for a in Advertiser.query.order_by(Advertiser.name).all()
     ]
 
+    if request.method == "GET":
+        feed_config = campaign.feed_config or {}
+        form.feed_filter_key.data = feed_config.get("filter_key", "")
+        form.feed_filter_contains.data = feed_config.get("filter_contains", "")
+
     if form.validate_on_submit():
         # Preserve music bed fields — populate_obj would overwrite them
         saved_s3_key = campaign.music_bed_s3_key
@@ -640,6 +646,8 @@ def campaign_edit(campaign_id):
         # Restore music bed fields (handled separately via _handle_music_bed_upload)
         campaign.music_bed_s3_key = saved_s3_key
         campaign.music_bed_filename = saved_filename
+
+        _save_feed_filter_config(campaign, form)
 
         # Clear empty strings to None
         if not campaign.feed_url:
@@ -678,6 +686,26 @@ def campaign_edit(campaign_id):
 
 
 # ---- Helpers ----
+
+def _save_feed_filter_config(campaign, form):
+    """Merge the feed filter fields into the campaign's feed_config JSON.
+
+    Both key and contains must be set for the filter to apply; blanking
+    either removes the filter. Other feed_config keys are preserved.
+    """
+    config = dict(campaign.feed_config or {})
+    filter_key = (form.feed_filter_key.data or "").strip()
+    filter_contains = (form.feed_filter_contains.data or "").strip()
+
+    if filter_key and filter_contains:
+        config["filter_key"] = filter_key
+        config["filter_contains"] = filter_contains
+    else:
+        config.pop("filter_key", None)
+        config.pop("filter_contains", None)
+
+    campaign.feed_config = config or None
+
 
 def _get_feed_type_suggestions() -> list[str]:
     """Return a deduplicated list of feed type suggestions.

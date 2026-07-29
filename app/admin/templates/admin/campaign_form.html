@@ -61,6 +61,17 @@
                     <small class="text-muted">Leave blank for default feed (weather: EC Vancouver, concerts: AdmitOne Vancouver)</small>
                 </div>
             </div>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Filter Key</label>
+                    {{ form.feed_filter_key(class="form-control", placeholder="e.g. promoter_presents") }}
+                </div>
+                <div class="col-md-8 mb-3">
+                    <label class="form-label">Filter Contains</label>
+                    {{ form.feed_filter_contains(class="form-control", placeholder="e.g. Vancouver Is Funny") }}
+                    <small class="text-muted">Only keep feed items where this key's value contains this text — matched anywhere in the value, case-insensitive. Leave both blank to keep everything.</small>
+                </div>
+            </div>
         </div>
     </div>
 

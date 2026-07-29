@@ -13,7 +13,7 @@ import requests
 from flask import current_app
 
 from app.pipeline.exceptions import FeedFetchError
-from app.pipeline.feeds.base import BaseFeed
+from app.pipeline.feeds.base import BaseFeed, apply_contains_filter
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +131,7 @@ keys to capture the important information.
 
 Sort by date ascending. Limit to {max_items} items. Omit cancelled items.
 If you cannot find any relevant items, return an empty array: []
+{extra_keys_instruction}
 
 CONTENT:
 {content}\
@@ -198,9 +199,28 @@ class GenericFeed(BaseFeed):
         except requests.RequestException as exc:
             raise FeedFetchError(f"Feed fetch failed: {exc}") from exc
 
-        items = self._extract_items(resp.text, feed_type, max_items)
+        filter_key = config.get("filter_key", "")
+        filter_contains = config.get("filter_contains", "")
+
+        # If the body is JSON, filter items on the raw source fields before
+        # Claude extraction — otherwise matching items past Claude's
+        # max_items cap would be lost.
+        content = resp.text
+        prefiltered = _prefilter_json_content(content, filter_key, filter_contains)
+        if prefiltered is not None:
+            content = prefiltered
+
+        items = self._extract_items(content, feed_type, max_items, filter_key)
+        if prefiltered is None:
+            # HTML/XML path — filter on the extracted items instead.
+            items = apply_contains_filter(items, filter_key, filter_contains)
 
         if not items:
+            if filter_key and filter_contains:
+                raise FeedFetchError(
+                    f"No feed items matched the filter "
+                    f'({filter_key} contains "{filter_contains}").'
+                )
             raise FeedFetchError("No items found in feed.")
 
         items = items[:max_items]
@@ -214,7 +234,7 @@ class GenericFeed(BaseFeed):
         return DEFAULT_PROMPT_TEMPLATE
 
     def _extract_items(
-        self, content: str, feed_type: str, max_items: int
+        self, content: str, feed_type: str, max_items: int, filter_key: str = ""
     ) -> list[dict]:
         """Use Claude to extract structured items from raw feed content."""
         logger.info("Extracting %s items via Claude...", feed_type)
@@ -223,6 +243,13 @@ class GenericFeed(BaseFeed):
         if len(content) > max_chars:
             content = content[:max_chars]
 
+        extra_keys_instruction = ""
+        if filter_key:
+            extra_keys_instruction = (
+                f'Additionally include the source field "{filter_key}" '
+                f"(with its original value) on every item where it is present.\n"
+            )
+
         client = anthropic.Anthropic(
             api_key=current_app.config["ANTHROPIC_API_KEY"]
         )
@@ -230,6 +257,7 @@ class GenericFeed(BaseFeed):
             feed_type=feed_type,
             max_items=max_items,
             content=content,
+            extra_keys_instruction=extra_keys_instruction,
         )
 
         try:
@@ -258,6 +286,42 @@ class GenericFeed(BaseFeed):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _prefilter_json_content(
+    text: str, filter_key: str, filter_contains: str
+) -> str | None:
+    """Apply the contains filter to raw JSON feed content.
+
+    Returns the filtered content as a JSON string, or None when there is
+    no filter configured or the content isn't a JSON list (in which case
+    the caller filters post-extraction instead).
+    """
+    if not filter_key or not filter_contains:
+        return None
+
+    stripped = text.lstrip()
+    if not (stripped.startswith("[") or stripped.startswith("{")):
+        return None
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+
+    if isinstance(data, list):
+        return json.dumps(apply_contains_filter(data, filter_key, filter_contains))
+
+    if isinstance(data, dict):
+        filtered_any = False
+        for key, value in data.items():
+            if isinstance(value, list) and value and isinstance(value[0], dict):
+                data[key] = apply_contains_filter(value, filter_key, filter_contains)
+                filtered_any = True
+        if filtered_any:
+            return json.dumps(data)
+
+    return None
+
 
 def _detect_sport(feed_type: str) -> str | None:
     """Detect the specific sport from a feed_type string.

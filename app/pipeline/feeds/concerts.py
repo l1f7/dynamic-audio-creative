@@ -12,7 +12,7 @@ import requests
 from flask import current_app
 
 from app.pipeline.exceptions import FeedFetchError
-from app.pipeline.feeds.base import BaseFeed
+from app.pipeline.feeds.base import BaseFeed, apply_contains_filter
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,8 @@ class ConcertsFeed(BaseFeed):
         feed_url = campaign.feed_url or DEFAULT_FEED_URL
         venue_filter = config.get("venue_filter", "")
         max_shows = config.get("max_shows", DEFAULT_MAX_SHOWS)
+        filter_key = config.get("filter_key", "")
+        filter_contains = config.get("filter_contains", "")
 
         logger.info("Fetching concerts from %s...", feed_url)
 
@@ -78,11 +80,19 @@ class ConcertsFeed(BaseFeed):
         content_type = resp.headers.get("content-type", "")
 
         if "json" in content_type or _looks_like_json(resp.text):
-            shows = _parse_json_feed(resp.text, venue_filter)
+            shows = _parse_json_feed(
+                resp.text, venue_filter, filter_key, filter_contains
+            )
         else:
             shows = self._extract_shows_from_html(resp.text, max_shows)
+            shows = apply_contains_filter(shows, filter_key, filter_contains)
 
         if not shows:
+            if filter_key and filter_contains:
+                raise FeedFetchError(
+                    f"No feed items matched the filter "
+                    f'({filter_key} contains "{filter_contains}").'
+                )
             raise FeedFetchError("No items found in feed.")
 
         return _build_template_vars(shows[:max_shows])
@@ -133,7 +143,12 @@ def _looks_like_json(text: str) -> bool:
     return stripped.startswith("{") or stripped.startswith("[")
 
 
-def _parse_json_feed(text: str, venue_filter: str) -> list[dict]:
+def _parse_json_feed(
+    text: str,
+    venue_filter: str,
+    filter_key: str = "",
+    filter_contains: str = "",
+) -> list[dict]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -141,6 +156,10 @@ def _parse_json_feed(text: str, venue_filter: str) -> list[dict]:
         return []
 
     events = data if isinstance(data, list) else data.get("events", [])
+
+    # Filter on the raw event dicts so any source field (e.g.
+    # "promoter_presents") can be used, not just the mapped keys.
+    events = apply_contains_filter(events, filter_key, filter_contains)
 
     shows = []
     for e in events:

@@ -50,6 +50,8 @@ class CampaignForm(FlaskForm):
     # Feed
     feed_type = StringField("Feed Type", validators=[DataRequired()])
     feed_url = StringField("Feed URL", validators=[Optional()])
+    feed_filter_key = StringField("Filter Key", validators=[Optional()])
+    feed_filter_contains = StringField("Filter Contains", validators=[Optional()])
     target_city = StringField("Target City", validators=[Optional()])
 
     # Ad copy

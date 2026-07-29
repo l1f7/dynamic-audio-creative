@@ -220,6 +220,106 @@ class TestConcertJsonParsing:
         assert _looks_like_json("not json") is False
 
 
+class TestContainsFilter:
+    """Test the key/contains feed item filter."""
+
+    ITEMS = [
+        {"title": "Comedy Night", "promoter_presents": "Vancouver Is Funny presents Comedy Night"},
+        {"title": "Rock Show", "promoter_presents": "LiveNation presents Rock Show"},
+        {"title": "No Key Item"},
+    ]
+
+    def test_keeps_only_matching_items(self):
+        from app.pipeline.feeds.base import apply_contains_filter
+
+        out = apply_contains_filter(self.ITEMS, "promoter_presents", "Vancouver Is Funny")
+        assert [i["title"] for i in out] == ["Comedy Night"]
+
+    def test_match_is_case_insensitive(self):
+        from app.pipeline.feeds.base import apply_contains_filter
+
+        out = apply_contains_filter(self.ITEMS, "promoter_presents", "vancouver is funny")
+        assert [i["title"] for i in out] == ["Comedy Night"]
+
+    def test_match_anywhere_in_value(self):
+        from app.pipeline.feeds.base import apply_contains_filter
+
+        out = apply_contains_filter(self.ITEMS, "promoter_presents", "presents")
+        assert [i["title"] for i in out] == ["Comedy Night", "Rock Show"]
+
+    def test_items_missing_the_key_are_dropped(self):
+        from app.pipeline.feeds.base import apply_contains_filter
+
+        out = apply_contains_filter(self.ITEMS, "promoter_presents", "e")
+        assert all("promoter_presents" in i for i in out)
+
+    def test_blank_filter_keeps_everything(self):
+        from app.pipeline.feeds.base import apply_contains_filter
+
+        assert apply_contains_filter(self.ITEMS, "", "") == self.ITEMS
+        assert apply_contains_filter(self.ITEMS, "promoter_presents", "") == self.ITEMS
+        assert apply_contains_filter(self.ITEMS, "", "Vancouver") == self.ITEMS
+
+    def test_concerts_json_filters_on_raw_source_key(self):
+        """The filter applies to raw feed fields, not just mapped show keys."""
+        from app.pipeline.feeds.concerts import _parse_json_feed
+
+        sample = {
+            "events": [
+                {
+                    "artist": "Funny Person",
+                    "event_date": "May 8th, 2026",
+                    "venue": "Vogue Theatre",
+                    "promoter_presents": "Vancouver Is Funny & Friends",
+                },
+                {
+                    "artist": "Serious Band",
+                    "event_date": "May 9th, 2026",
+                    "venue": "Vogue Theatre",
+                    "promoter_presents": "Other Promoter",
+                },
+            ]
+        }
+        shows = _parse_json_feed(
+            json.dumps(sample),
+            venue_filter="",
+            filter_key="promoter_presents",
+            filter_contains="vancouver is funny",
+        )
+        assert [s["artist"] for s in shows] == ["Funny Person"]
+
+    def test_concerts_json_no_filter_keeps_all(self):
+        from app.pipeline.feeds.concerts import _parse_json_feed
+
+        sample = {"events": [{"artist": "A", "event_date": "d", "venue": "V"}]}
+        shows = _parse_json_feed(json.dumps(sample), venue_filter="")
+        assert len(shows) == 1
+
+    def test_generic_prefilter_json_list(self):
+        from app.pipeline.feeds.generic import _prefilter_json_content
+
+        text = json.dumps(self.ITEMS)
+        out = _prefilter_json_content(text, "promoter_presents", "Vancouver Is Funny")
+        assert [i["title"] for i in json.loads(out)] == ["Comedy Night"]
+
+    def test_generic_prefilter_json_dict_of_lists(self):
+        from app.pipeline.feeds.generic import _prefilter_json_content
+
+        text = json.dumps({"events": self.ITEMS})
+        out = _prefilter_json_content(text, "promoter_presents", "Vancouver Is Funny")
+        assert [i["title"] for i in json.loads(out)["events"]] == ["Comedy Night"]
+
+    def test_generic_prefilter_non_json_returns_none(self):
+        from app.pipeline.feeds.generic import _prefilter_json_content
+
+        assert _prefilter_json_content("<html></html>", "k", "v") is None
+
+    def test_generic_prefilter_no_filter_returns_none(self):
+        from app.pipeline.feeds.generic import _prefilter_json_content
+
+        assert _prefilter_json_content(json.dumps(self.ITEMS), "", "") is None
+
+
 class TestWorldCupParsing:
     """Test /today proxy response parsing helpers."""
 
