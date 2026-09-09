@@ -5,5 +5,6 @@ from app.models.advertiser import Advertiser
 from app.models.campaign import Campaign
 from app.models.pronunciation import PronunciationEntry
 from app.models.ad_run import AdRun
+from app.models.api_key import ApiKey
 
-__all__ = ["AdminUser", "Advertiser", "Campaign", "PronunciationEntry", "AdRun"]
+__all__ = ["AdminUser", "Advertiser", "ApiKey", "Campaign", "PronunciationEntry", "AdRun"]

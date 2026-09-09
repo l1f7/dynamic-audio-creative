@@ -57,6 +57,24 @@ def generate_signed_url(key: str, expires_in: int = 3600) -> str:
     )
 
 
+def generate_upload_url(key: str, content_type: str, expires_in: int = 3600) -> str:
+    """Pre-signed PUT URL. The caller must send exactly this Content-Type."""
+    client = get_client()
+    return client.generate_presigned_url(
+        "put_object",
+        Params={
+            "Bucket": current_app.config["S3_BUCKET"],
+            "Key": key,
+            "ContentType": content_type,
+        },
+        ExpiresIn=expires_in,
+    )
+
+
+def is_configured() -> bool:
+    return bool(current_app.config.get("S3_ENDPOINT_URL"))
+
+
 def delete(key: str):
     """Delete an object from S3."""
     client = get_client()

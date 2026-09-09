@@ -38,8 +38,22 @@
     </div>
     <div class="mb-3">
         <label class="form-label">Frequency Token</label>
-        {{ form.frequency_token(class="form-control") }}
+        {{ form.frequency_token(class="form-control font-monospace" + (" is-invalid" if form.frequency_token.errors else "")) }}
+        {% for error in form.frequency_token.errors %}
+        <div class="invalid-feedback">{{ error }}</div>
+        {% endfor %}
+        <small class="text-muted">A JWT issued by Frequency. It is decoded and checked against Frequency when you save.</small>
     </div>
+    {% if token_summary %}
+    <div class="card mb-3">
+        <div class="card-header small text-uppercase">Saved token points at</div>
+        <ul class="list-group list-group-flush">
+            {% for label, value in token_summary %}
+            <li class="list-group-item d-flex justify-content-between"><span class="text-muted">{{ label }}</span><span>{{ value }}</span></li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
 
     <hr class="my-4">
     <h5>Display &amp; Video 360 (DV360)</h5>
@@ -56,5 +70,8 @@
 
     <button type="submit" class="btn btn-primary">{{ 'Update' if editing else 'Create' }} Advertiser</button>
     <a href="{{ url_for('admin.advertiser_list') }}" class="btn btn-outline-secondary ms-2">Cancel</a>
+    {% if editing %}
+    <a href="{{ url_for('admin.advertiser_keys', adv_id=advertiser.id) }}" class="btn btn-outline-secondary ms-2">Desktop Push Keys</a>
+    {% endif %}
 </form>
 {% endblock %}

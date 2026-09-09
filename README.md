@@ -89,6 +89,37 @@ Copy `.env.example` to `.env` and set the following:
 | `ELEVENLABS_MODEL` | `eleven_monolingual_v1` | ElevenLabs model ID |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection (Phase 3 background jobs) |
 
+### Desktop push mode
+
+The `ctn-dropd` desktop daemon pushes finished audio files straight into a
+campaign. The contract is `docs/dac-api-contract.md`. Each drop station gets its
+own revocable key, issued from **Advertisers → Keys** in the admin. Only a hash
+is stored, so the plaintext is shown once.
+
+Endpoints live under `/api/v1` and take the key in `X-API-Key`:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /me` | Validate the key, return its advertiser |
+| `GET /campaigns` | Active campaigns for that advertiser, with `deliverable` |
+| `POST /campaigns/{id}/uploads` | Presigned PUT URL, or `duplicate_run_id` |
+| `POST /campaigns/{id}/push` | Register the uploaded object as a `pending` run |
+| `GET /runs/{run_id}` | Poll `status` / `delivery_error` |
+| `GET /campaigns/{id}/runs` | Delivery history, newest first, with `is_active` |
+| `POST /campaigns/{id}/revert` | Re-deliver a previous run's stored audio |
+| `POST /campaigns/{id}/pause` | Soft pause: flips `delivery_enabled` |
+
+Pushed runs are delivered by `POST /api/v1/scheduler/tick` (global `API_KEY`,
+called by Render cron), so schedule that every minute. Pushed files are probed
+with `ffprobe` and compared with the `creative_duration` in the advertiser's
+Frequency token; a mismatch beyond ±1 s, or an unreadable file, is rejected with
+a plain-text `422`. Non-MP3 audio is transcoded to MP3 before delivery.
+
+| Variable | Default | Description |
+|---|---|---|
+| `CMPAPI_ENV` | `production` | `staging` targets `staging-cmp.frequencyads.com` |
+| `CMPAPI_BASE_URL` | from `CMPAPI_ENV` | Explicit override of the Frequency API base URL |
+
 ### Frequency Ad Server (not yet implemented)
 
 | Variable | Description |

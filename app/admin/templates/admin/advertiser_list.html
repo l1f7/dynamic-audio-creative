@@ -30,7 +30,10 @@
                     <span class="badge bg-secondary">Inactive</span>
                 {% endif %}
             </td>
-            <td><a href="{{ url_for('admin.advertiser_edit', adv_id=adv.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a></td>
+            <td>
+                <a href="{{ url_for('admin.advertiser_edit', adv_id=adv.id) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                <a href="{{ url_for('admin.advertiser_keys', adv_id=adv.id) }}" class="btn btn-sm btn-outline-secondary">Keys</a>
+            </td>
         </tr>
         {% endfor %}
     </tbody>

@@ -13,10 +13,7 @@ pass it explicitly via cookies= to avoid requests cookie-jar policy issues.
 
 import io
 import logging
-import subprocess
-import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 from urllib.parse import quote
 
 import requests
@@ -263,26 +260,12 @@ def _raise_for_status(resp: requests.Response, step: str) -> None:
 
 
 def _probe_duration(audio_bytes: bytes) -> int:
-    """Return the duration of an MP3 in whole seconds using ffprobe."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        path = Path(tmpdir) / "ad.mp3"
-        path.write_bytes(audio_bytes)
-        cmd = [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(path),
-        ]
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            duration = int(float(result.stdout.strip()))
-            logger.info("[Frequency] Probed audio duration: %ds", duration)
-            return duration
-        except (subprocess.CalledProcessError, ValueError) as exc:
-            raise FrequencyDeliveryError(
-                f"Could not determine audio duration: {exc}"
-            ) from exc
+    """Return the duration of the creative in whole seconds using ffprobe."""
+    from app.push.audio import PushRejected, probe
+
+    try:
+        duration = int(probe(audio_bytes, "ad.mp3").duration)
+    except PushRejected as exc:
+        raise FrequencyDeliveryError(f"Could not determine audio duration: {exc}") from exc
+    logger.info("[Frequency] Probed audio duration: %ds", duration)
+    return duration

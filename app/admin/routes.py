@@ -20,13 +20,15 @@ from app.admin.forms import (
     AdminUserEditForm,
     AdminUserResetPasswordForm,
     AdvertiserForm,
+    ApiKeyCreateForm,
     CampaignForm,
     ChangeOwnPasswordForm,
     LoginForm,
     SimpleActionForm,
 )
+from app.delivery import frequency_token
 from app.extensions import db
-from app.models import AdRun, AdminUser, Advertiser, Campaign, PronunciationEntry
+from app.models import AdRun, AdminUser, Advertiser, ApiKey, Campaign, PronunciationEntry
 
 
 PASSWORD_CHANGE_ENDPOINT = "admin.account_password"
@@ -38,6 +40,7 @@ SCHEMA_TABLES = {
     "ad_runs",
     "admin_users",
     "advertisers",
+    "api_keys",
     "campaigns",
     "pronunciation_entries",
 }
@@ -276,7 +279,7 @@ def advertiser_list():
 @login_required
 def advertiser_new():
     form = AdvertiserForm()
-    if form.validate_on_submit():
+    if form.validate_on_submit() and _frequency_token_is_sound(form):
         adv = Advertiser(
             name=form.name.data,
             description=form.description.data or None,
@@ -302,14 +305,117 @@ def advertiser_edit(adv_id):
     adv = Advertiser.query.get_or_404(adv_id)
     form = AdvertiserForm(obj=adv)
 
-    if form.validate_on_submit():
+    if form.validate_on_submit() and _frequency_token_is_sound(form):
         form.populate_obj(adv)
         adv.dv360_service_account_json = _minify_json(adv.dv360_service_account_json)
         db.session.commit()
         flash(f"Advertiser '{adv.name}' updated.", "success")
         return redirect(url_for("admin.advertiser_list"))
 
-    return render_template("admin/advertiser_form.html", form=form, editing=True, advertiser=adv)
+    return render_template(
+        "admin/advertiser_form.html",
+        form=form,
+        editing=True,
+        advertiser=adv,
+        token_summary=_token_summary(adv.frequency_token),
+    )
+
+
+def _frequency_token_is_sound(form) -> bool:
+    """Decode the token on save and report what it points at; a malformed token blocks."""
+    token = (form.frequency_token.data or "").strip()
+    if not token:
+        return True
+    try:
+        payload = frequency_token.decode_payload(token)
+    except frequency_token.InvalidFrequencyToken as exc:
+        form.frequency_token.errors.append(str(exc))
+        return False
+    flash("Frequency token points at: " + _describe_payload(payload), "info")
+    _report_frequency_validation(form.frequency_client.data, token)
+    return True
+
+
+def _describe_payload(payload: dict) -> str:
+    return ", ".join(f"{label} {value}" for label, value in frequency_token.summarise(payload))
+
+
+def _token_summary(token):
+    if not token:
+        return None
+    try:
+        return frequency_token.summarise(frequency_token.decode_payload(token))
+    except frequency_token.InvalidFrequencyToken:
+        return None
+
+
+APPLICATION_ID_KEYS = ("applicationId", "application_id", "app_id")
+
+
+def _report_frequency_validation(client, token: str) -> None:
+    """Ask Frequency whether the token is live. Failure warns but never blocks saving."""
+    from app.delivery.frequency import FrequencyDeliveryError, _validate
+
+    base_url = (current_app.config.get("CMPAPI_BASE_URL") or "").rstrip("/")
+    if not base_url or not client:
+        flash("Frequency validation skipped: set CMPAPI_BASE_URL and a client name to check the token.", "warning")
+        return
+    try:
+        data = _validate(base_url, client, token).json()
+    except (FrequencyDeliveryError, ValueError, OSError) as exc:
+        flash(f"Frequency did not accept this token: {exc}", "warning")
+        return
+    campaign_id = (data.get("tokenData") or {}).get("campaign_id")
+    flash(f"Frequency token is live (campaign {campaign_id}).", "success")
+    app_id = _find_application_id(data)
+    if app_id is not None:
+        flash(f"Frequency reports application ID {app_id} for this token.", "info")
+
+
+def _find_application_id(data: dict):
+    for scope in (data, data.get("tokenData") or {}):
+        for key in APPLICATION_ID_KEYS:
+            if key in scope:
+                return scope[key]
+    return None
+
+
+# ---- API keys ----
+
+@admin_bp.route("/advertisers/<int:adv_id>/keys", methods=["GET", "POST"])
+@login_required
+def advertiser_keys(adv_id):
+    """Desktop push keys for one advertiser: list and create."""
+    from app.push.keys import create_key
+
+    adv = Advertiser.query.get_or_404(adv_id)
+    form = ApiKeyCreateForm()
+    plaintext = None
+    if form.validate_on_submit():
+        api_key, plaintext = create_key(adv, form.name.data.strip())
+        flash(f"Key '{api_key.name}' created. Copy it now; it will not be shown again.", "success")
+        form = ApiKeyCreateForm(formdata=None)
+
+    return render_template(
+        "admin/advertiser_keys.html",
+        advertiser=adv,
+        keys=adv.api_keys.all(),
+        form=form,
+        plaintext=plaintext,
+        action_form=SimpleActionForm(),
+    )
+
+
+@admin_bp.route("/advertisers/<int:adv_id>/keys/<int:key_id>/revoke", methods=["POST"])
+@login_required
+def advertiser_key_revoke(adv_id, key_id):
+    from app.push.keys import revoke_key
+
+    api_key = ApiKey.query.filter_by(id=key_id, advertiser_id=adv_id).first_or_404()
+    if not api_key.is_revoked:
+        revoke_key(api_key)
+        flash(f"Key '{api_key.name}' revoked.", "warning")
+    return redirect(url_for("admin.advertiser_keys", adv_id=adv_id))
 
 
 # ---- Campaigns ----

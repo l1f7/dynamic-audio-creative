@@ -184,3 +184,8 @@ class ChangeOwnPasswordForm(FlaskForm):
 
 class SimpleActionForm(FlaskForm):
     submit = SubmitField("Submit")
+
+
+class ApiKeyCreateForm(FlaskForm):
+    name = StringField("Key Name", validators=[DataRequired(), Length(max=100)])
+    submit = SubmitField("Create Key")

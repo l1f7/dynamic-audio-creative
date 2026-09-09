@@ -3,6 +3,12 @@
 from app.extensions import db
 
 
+TRIGGER_MANUAL = "manual"
+TRIGGER_CRON = "cron"
+TRIGGER_API = "api"
+TRIGGER_WATCHER = "watcher"  # file pushed from a desktop watch folder
+TRIGGERED_BY_VALUES = [TRIGGER_MANUAL, TRIGGER_CRON, TRIGGER_API, TRIGGER_WATCHER]
+
 RUN_STATUSES = [
     "pending",
     "fetching_data",
@@ -16,8 +22,21 @@ RUN_STATUSES = [
 ]
 
 
+# A pushed file skips generation, so "Pending" means waiting for the delivery tick
+PUSHED_STATUS_LABELS = {
+    "pending": "Waiting for delivery...",
+    "uploading": "Receiving file...",
+    "delivering": "Delivering to ad server...",
+}
+
+
 class AdRun(db.Model):
     __tablename__ = "ad_runs"
+    # Server-side idempotency for pushed files: the daemon retries freely and a
+    # repeated push of the same bytes must land on the same run.
+    __table_args__ = (
+        db.UniqueConstraint("campaign_id", "source_content_hash", name="uq_ad_runs_campaign_content_hash"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     campaign_id = db.Column(
@@ -26,7 +45,7 @@ class AdRun(db.Model):
 
     # Status tracking
     status = db.Column(db.String(30), nullable=False, default="pending")
-    triggered_by = db.Column(db.String(20), nullable=False)  # manual, cron, api
+    triggered_by = db.Column(db.String(20), nullable=False)  # see TRIGGERED_BY_VALUES
 
     # Pipeline outputs (S3 keys)
     voiceover_s3_key = db.Column(db.String(500), nullable=True)
@@ -41,6 +60,11 @@ class AdRun(db.Model):
     # Factor is the FFmpeg atempo applied (>1.0 = sped up / compressed).
     # Null means no stretching ran (e.g. voiceover already within target).
     stretch_factor = db.Column(db.Float, nullable=True)
+
+    # Pushed files: original name, blake3 hex of the bytes, and their size
+    source_filename = db.Column(db.String(500), nullable=True)
+    source_content_hash = db.Column(db.String(64), nullable=True, index=True)
+    source_bytes = db.Column(db.BigInteger, nullable=True)
 
     # Feed data snapshot (for debugging)
     feed_data_snapshot = db.Column(db.JSON, nullable=True)
@@ -72,6 +96,10 @@ class AdRun(db.Model):
     HEAVY_STRETCH_THRESHOLD = 1.10  # 10%
 
     @property
+    def is_pushed(self):
+        return self.triggered_by == TRIGGER_WATCHER
+
+    @property
     def is_terminal(self):
         """Whether this run has reached a final state."""
         return self.status in ("complete", "failed")
@@ -94,6 +122,8 @@ class AdRun(db.Model):
     @property
     def status_label(self):
         """Human-readable status for the UI."""
+        if self.is_pushed and self.status in PUSHED_STATUS_LABELS:
+            return PUSHED_STATUS_LABELS[self.status]
         labels = {
             "pending": "Pending",
             "fetching_data": "Fetching data...",

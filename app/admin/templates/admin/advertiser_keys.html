@@ -1,0 +1,69 @@
+{% extends "admin/base.html" %}
+{% block title %}Push Keys — {{ advertiser.name }} — DAC Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Desktop Push Keys <small class="text-muted fs-5">{{ advertiser.name }}</small></h2>
+    <a href="{{ url_for('admin.advertiser_edit', adv_id=advertiser.id) }}" class="btn btn-outline-secondary">Back to Advertiser</a>
+</div>
+
+<p class="text-muted">Each desktop watch-folder station gets its own key, entered once in the drop app. A key only sees this advertiser's campaigns. Only a hash is stored, so a lost key must be replaced.</p>
+
+{% if plaintext %}
+<div class="alert alert-success">
+    <strong>New key (shown once):</strong>
+    <code class="user-select-all d-block mt-2 fs-6">{{ plaintext }}</code>
+</div>
+{% endif %}
+
+<form method="POST" class="row g-2 mb-4" style="max-width: 600px;">
+    {{ form.hidden_tag() }}
+    <div class="col">
+        {{ form.name(class="form-control", placeholder="e.g. Studio B drop station") }}
+        {% for error in form.name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Create Key</button>
+    </div>
+</form>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Prefix</th>
+            <th>Created</th>
+            <th>Last used</th>
+            <th>Status</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for key in keys %}
+        <tr class="{{ 'text-muted' if key.is_revoked }}">
+            <td>{{ key.name }}</td>
+            <td><code>{{ key.key_prefix }}…</code></td>
+            <td>{{ key.created_at.strftime('%Y-%m-%d') if key.created_at else '—' }}</td>
+            <td>{{ key.last_used_at.strftime('%Y-%m-%d %H:%M') if key.last_used_at else 'never' }}</td>
+            <td>
+                {% if key.is_revoked %}
+                    <span class="badge bg-secondary">Revoked {{ key.revoked_at.strftime('%Y-%m-%d') }}</span>
+                {% else %}
+                    <span class="badge bg-success">Active</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if not key.is_revoked %}
+                <form method="POST" action="{{ url_for('admin.advertiser_key_revoke', adv_id=advertiser.id, key_id=key.id) }}" class="d-inline">
+                    {{ action_form.hidden_tag() }}
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Revoke</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted">No keys yet.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

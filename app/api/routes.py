@@ -1,6 +1,7 @@
-"""API routes — trigger ad generation and poll status.
+"""API routes — trigger ad generation and the scheduler tick.
 
-Authenticated via X-API-Key header.
+Per-advertiser push endpoints live in app.api.push. The global API_KEY is
+accepted only by /scheduler/tick, which Render cron calls.
 
 Testing flags (query params):
   testing=true          Enable fake responses (only honoured in non-production)
@@ -10,18 +11,11 @@ Testing flags (query params):
   error=failedatsource  Return a 502 simulating an upstream feed failure
 """
 
-from flask import current_app, jsonify, request
+from flask import current_app, g, jsonify, request
 
 from app.api import api_bp
-
-
-def _check_api_key():
-    """Verify the X-API-Key header matches the configured API key."""
-    key = request.headers.get("X-API-Key")
-    expected = current_app.config.get("API_KEY")
-    if not expected or key != expected:
-        return jsonify({"error": "Unauthorized"}), 401
-    return None
+from app.api.auth import require_advertiser_key, require_global_api_key
+from app.models import Campaign
 
 
 def _check_testing_flags():
@@ -53,45 +47,29 @@ def _check_testing_flags():
 
 
 @api_bp.route("/campaigns/<int:campaign_id>/generate", methods=["POST"])
+@require_advertiser_key
 def generate(campaign_id):
     """Trigger ad generation for a campaign. Returns the run ID."""
-    auth_error = _check_api_key()
-    if auth_error:
-        return auth_error
-
     fake = _check_testing_flags()
     if fake:
         return fake
+
+    campaign = Campaign.query.filter_by(id=campaign_id, advertiser_id=g.advertiser.id).first()
+    if campaign is None:
+        return jsonify({"error": "Campaign not found"}), 404
 
     # TODO Phase 3: enqueue RQ job, return run_id
     return jsonify({"error": "Not yet implemented — coming in Phase 3"}), 501
 
 
-@api_bp.route("/runs/<int:run_id>", methods=["GET"])
-def run_status(run_id):
-    """Poll the status of an ad run."""
-    auth_error = _check_api_key()
-    if auth_error:
-        return auth_error
-
-    fake = _check_testing_flags()
-    if fake:
-        return fake
-
-    # TODO Phase 3: return run status, script text, audio URL
-    return jsonify({"error": "Not yet implemented — coming in Phase 3"}), 501
-
-
 @api_bp.route("/scheduler/tick", methods=["POST"])
+@require_global_api_key
 def scheduler_tick():
-    """Called by Render cron — checks which campaigns are due and enqueues jobs."""
-    auth_error = _check_api_key()
-    if auth_error:
-        return auth_error
-
+    """Called by Render cron. Delivers pushed runs that are waiting."""
     fake = _check_testing_flags()
     if fake:
         return fake
 
-    # TODO Phase 5: evaluate cron schedules, enqueue due campaigns
-    return jsonify({"message": "Scheduler tick — not yet implemented"}), 200
+    from app.jobs.scheduler import deliver_pending_pushes
+    delivered = deliver_pending_pushes()
+    return jsonify({"delivered_pushes": delivered}), 200

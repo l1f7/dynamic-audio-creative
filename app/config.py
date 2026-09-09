@@ -6,6 +6,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+CMPAPI_ENV_STAGING = "staging"
+CMPAPI_ENV_PRODUCTION = "production"
+CMPAPI_URLS = {
+    CMPAPI_ENV_STAGING: "https://staging-cmp.frequencyads.com",
+    CMPAPI_ENV_PRODUCTION: "https://cmp.frequencyads.com",
+}
+
 
 class BaseConfig:
     """Shared configuration."""
@@ -44,7 +51,9 @@ class BaseConfig:
 
     # Frequency Campaign Manager API
     FREQUENCY_ENABLED = os.environ.get("FREQUENCY_ENABLED", "false").lower() == "true"
-    CMPAPI_BASE_URL = os.environ.get("CMPAPI_BASE_URL")   # e.g. https://cmpapi.example.com
+    # CMPAPI_ENV picks staging or production; an explicit CMPAPI_BASE_URL overrides it
+    CMPAPI_ENV = os.environ.get("CMPAPI_ENV", CMPAPI_ENV_PRODUCTION)
+    CMPAPI_BASE_URL = os.environ.get("CMPAPI_BASE_URL") or CMPAPI_URLS.get(CMPAPI_ENV)
     # Note: app ID is configured per-campaign via Campaign.frequency_app_id
 
     # Display & Video 360 (DV360)

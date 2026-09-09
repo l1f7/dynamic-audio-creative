@@ -41,8 +41,10 @@ services:
         sync: false
       - key: FREQUENCY_ENABLED
         sync: false
+      - key: CMPAPI_ENV
+        value: production   # "staging" points at staging-cmp.frequencyads.com
       - key: CMPAPI_BASE_URL
-        sync: false
+        sync: false         # optional explicit override of CMPAPI_ENV
 
 databases:
   - name: dynamic-audio-db

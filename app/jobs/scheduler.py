@@ -1,4 +1,8 @@
-"""Cron scheduler — finds campaigns due to run and fires the pipeline."""
+"""Cron scheduler — fires due pipelines and delivers pushed files.
+
+Both entry points are plain functions so a queue worker could call them
+unchanged if one is ever added.
+"""
 
 import logging
 from datetime import datetime, timezone, timedelta
@@ -7,9 +11,16 @@ from croniter import croniter
 
 from app.extensions import db
 from app.models import Campaign, AdRun
+from app.models.ad_run import TRIGGER_WATCHER
 from app.pipeline.runner import run_pipeline
 
 logger = logging.getLogger(__name__)
+
+STATUS_PENDING = "pending"
+STATUS_DELIVERING = "delivering"
+STATUS_COMPLETE = "complete"
+STATUS_FAILED = "failed"
+DELIVERY_REFERENCE_FREQUENCY = "frequency"
 
 
 def run_due_campaigns():
@@ -100,3 +111,69 @@ def run_due_campaigns():
             )
         except Exception:
             logger.exception("Campaign %d: unexpected error in run_pipeline", campaign.id)
+
+
+# ---------------------------------------------------------------------------
+# Pushed files
+# ---------------------------------------------------------------------------
+
+
+def deliver_pending_pushes() -> int:
+    """Deliver every pending pushed run whose campaign is not paused. Returns the count."""
+    from app.delivery.frequency import is_delivery_available
+
+    if not is_delivery_available():
+        logger.warning("[Push] Frequency delivery not available — leaving pushed runs pending")
+        return 0
+
+    runs = _pending_pushed_runs()
+    for run in runs:
+        _deliver_pushed_run(run)
+    return len(runs)
+
+
+def _pending_pushed_runs() -> list:
+    return (
+        AdRun.query.join(Campaign)
+        .filter(
+            AdRun.triggered_by == TRIGGER_WATCHER,
+            AdRun.status == STATUS_PENDING,
+            Campaign.delivery_enabled.is_(True),
+        )
+        .order_by(AdRun.created_at)
+        .all()
+    )
+
+
+def _deliver_pushed_run(run: AdRun) -> None:
+    from app.delivery.frequency import deliver_ad
+    from app.pipeline.runner import _load_final_ad
+
+    # Claim the run first so a slow tick overlapping the next cannot deliver twice
+    run.status = STATUS_DELIVERING
+    db.session.commit()
+    try:
+        run.vast_response = deliver_ad(run, _load_final_ad(run))
+        _mark_pushed_run_delivered(run)
+    except Exception as exc:
+        _mark_pushed_run_failed(run, exc)
+
+
+def _mark_pushed_run_delivered(run: AdRun) -> None:
+    now = datetime.now(timezone.utc)
+    run.delivered_at = now
+    run.completed_at = now
+    run.delivery_reference = DELIVERY_REFERENCE_FREQUENCY
+    run.delivery_error = None
+    run.status = STATUS_COMPLETE
+    db.session.commit()
+    logger.info("[Push] Delivered run #%d", run.id)
+
+
+def _mark_pushed_run_failed(run: AdRun, exc: Exception) -> None:
+    run.delivery_error = str(exc)
+    run.error_message = str(exc)
+    run.completed_at = datetime.now(timezone.utc)
+    run.status = STATUS_FAILED
+    db.session.commit()
+    logger.error("[Push] Delivery failed for run #%d: %s", run.id, exc)

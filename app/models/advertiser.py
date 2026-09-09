@@ -27,6 +27,9 @@ class Advertiser(db.Model):
     campaigns = db.relationship(
         "Campaign", back_populates="advertiser", lazy="dynamic"
     )
+    api_keys = db.relationship(
+        "ApiKey", back_populates="advertiser", lazy="dynamic", order_by="ApiKey.created_at.desc()"
+    )
 
     def __repr__(self):
         return f"<Advertiser {self.id}: {self.name}>"
