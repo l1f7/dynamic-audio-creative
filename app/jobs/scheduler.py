@@ -37,6 +37,8 @@ def run_due_campaigns():
     due = []
 
     for campaign in campaigns:
+        if campaign.is_push:
+            continue  # creative arrives from the drop app; nothing to generate
         if not campaign.cron_schedule:
             continue
 

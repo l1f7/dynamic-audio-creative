@@ -21,6 +21,11 @@
                     {{ form.advertiser_id(class="form-select") }}
                 </div>
                 <div class="col-md-6 mb-3">
+                    <label class="form-label">Campaign Type</label>
+                    {{ form.campaign_type(class="form-select", id="campaign-type") }}
+                    <small class="text-muted" id="campaign-type-help"></small>
+                </div>
+                <div class="col-md-6 mb-3">
                     <label class="form-label">Target City</label>
                     {{ form.target_city(class="form-control", placeholder="e.g. Vancouver, BC") }}
                 </div>
@@ -42,13 +47,14 @@
     </div>
 
     <!-- Feed -->
-    <div class="card mb-3">
+    <div class="card mb-3 automation-only">
         <div class="card-header">Data Feed</div>
         <div class="card-body">
             <div class="row">
                 <div class="col-md-4 mb-3">
                     <label class="form-label">Feed Type</label>
                     {{ form.feed_type(class="form-control", list="feed-type-suggestions", placeholder="e.g. weather, concerts, events...") }}
+                    {% for error in form.feed_type.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
                     <datalist id="feed-type-suggestions">
                         {% for ft in feed_type_suggestions %}
                         <option value="{{ ft }}">
@@ -76,7 +82,7 @@
     </div>
 
     <!-- Voice -->
-    <div class="card mb-3">
+    <div class="card mb-3 automation-only">
         <div class="card-header">Voice</div>
         <div class="card-body">
             <div class="row">
@@ -93,7 +99,7 @@
     </div>
 
     <!-- Mix Settings -->
-    <div class="card mb-3">
+    <div class="card mb-3 automation-only">
         <div class="card-header">Mix Settings</div>
         <div class="card-body">
             <div class="row">
@@ -140,7 +146,7 @@
     </div>
 
     <!-- Pronunciation Guide -->
-    <div class="card mb-3">
+    <div class="card mb-3 automation-only">
         <div class="card-header">Pronunciation Guide</div>
         <div class="card-body">
             <p class="text-muted small">Map written words to how they should be spoken by TTS.</p>
@@ -184,7 +190,7 @@
     </div>
 
     <!-- Ad Tags -->
-    <div class="card mb-3">
+    <div class="card mb-3 automation-only">
         <div class="card-header">Ad Tags</div>
         <div class="card-body">
             <p class="text-muted small">Paste in the exact outro/tag text. One per row — the pipeline will pick one at random each run.</p>
@@ -203,7 +209,7 @@
     </div>
 
     <!-- Script -->
-    <div class="card mb-3">
+    <div class="card mb-3 automation-only">
         <div class="card-header">Script Settings</div>
         <div class="card-body">
             <div class="row">
@@ -229,7 +235,7 @@
     </div>
 
     <!-- Schedule -->
-    <div class="card mb-3">
+    <div class="card mb-3 automation-only">
         <div class="card-header">Schedule</div>
         <div class="card-body">
             <div class="mb-3">
@@ -237,6 +243,20 @@
                 {{ form.cron_schedule(class="form-control", placeholder="e.g. 0 6 * * * (daily at 6am) — leave blank for manual only") }}
                 <small class="text-muted">Standard cron syntax. Leave blank to generate ads manually.</small>
             </div>
+        </div>
+    </div>
+
+    <!-- Push note -->
+    <div class="card mb-3 push-only">
+        <div class="card-header">Creative</div>
+        <div class="card-body">
+            <p class="mb-0 text-muted">
+                This campaign receives finished audio from the drop app over the
+                API. Nothing is generated here, so the feed, voice, mix, script
+                and schedule settings do not apply. Give the advertiser an
+                <strong>API key</strong> and this campaign will appear in their
+                drop app.
+            </p>
         </div>
     </div>
 
@@ -347,5 +367,31 @@ document.getElementById('pron-csv-import').addEventListener('click', function() 
         document.getElementById('pron-csv-input').value = '';
     }
 });
+
+// Campaign type — a push campaign generates nothing, so the whole AI half of
+// this form is irrelevant to it. Hidden, not disabled: the server clears these
+// fields on save either way (_normalize_push_campaign).
+(function() {
+    const select = document.getElementById('campaign-type');
+    const help = document.getElementById('campaign-type-help');
+    const HELP = {
+        automated: 'Generates its own creative from a feed on a schedule.',
+        push: 'Receives finished audio from the drop app. No AI runs for it.'
+    };
+
+    function apply() {
+        const isPush = select.value === 'push';
+        document.querySelectorAll('.automation-only').forEach(function(el) {
+            el.style.display = isPush ? 'none' : '';
+        });
+        document.querySelectorAll('.push-only').forEach(function(el) {
+            el.style.display = isPush ? '' : 'none';
+        });
+        help.textContent = HELP[select.value] || '';
+    }
+
+    select.addEventListener('change', apply);
+    apply();
+})();
 </script>
 {% endblock %}

@@ -28,8 +28,8 @@ def advertiser(db):
 
 @pytest.fixture
 def campaign(db, advertiser):
-    camp = Campaign(name="Spring Sale", advertiser_id=advertiser.id, feed_type="weather",
-                    frequency_app_id="app-1", delivery_enabled=True)
+    camp = Campaign(name="Spring Sale", advertiser_id=advertiser.id, feed_type="push",
+                    campaign_type="push", frequency_app_id="app-1", delivery_enabled=True)
     db.session.add(camp)
     db.session.commit()
     return camp
@@ -46,7 +46,8 @@ def other_campaign(db):
     other = Advertiser(name="Other")
     db.session.add(other)
     db.session.commit()
-    theirs = Campaign(name="Theirs", advertiser_id=other.id, feed_type="weather")
+    theirs = Campaign(name="Theirs", advertiser_id=other.id, feed_type="push",
+                      campaign_type="push")
     db.session.add(theirs)
     db.session.commit()
     return theirs
@@ -106,7 +107,8 @@ class TestMe:
 
 class TestCampaigns:
     def test_lists_only_own_active_campaigns(self, client, db, advertiser, campaign, headers, other_campaign):
-        db.session.add(Campaign(name="Retired", advertiser_id=advertiser.id, feed_type="weather", is_active=False))
+        db.session.add(Campaign(name="Retired", advertiser_id=advertiser.id, feed_type="push",
+                                campaign_type="push", is_active=False))
         db.session.commit()
         resp = client.get("/api/v1/campaigns", headers=headers)
         assert resp.status_code == 200

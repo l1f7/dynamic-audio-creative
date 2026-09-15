@@ -29,6 +29,7 @@ from app.admin.forms import (
 from app.delivery import frequency_token
 from app.extensions import db
 from app.models import AdRun, AdminUser, Advertiser, ApiKey, Campaign, PronunciationEntry
+from app.models.campaign import PUSH_FEED_TYPE
 
 
 PASSWORD_CHANGE_ENDPOINT = "admin.account_password"
@@ -440,6 +441,7 @@ def campaign_new():
             name=form.name.data,
             advertiser_id=form.advertiser_id.data,
             is_active=form.is_active.data,
+            campaign_type=form.campaign_type.data,
             feed_type=form.feed_type.data,
             feed_url=form.feed_url.data or None,
             target_city=form.target_city.data or None,
@@ -461,6 +463,7 @@ def campaign_new():
             dv360_line_item_id=form.dv360_line_item_id.data or None,
         )
         _save_feed_filter_config(campaign, form)
+        _normalize_push_campaign(campaign)
         db.session.add(campaign)
         db.session.commit()
 
@@ -501,6 +504,9 @@ def campaign_detail(campaign_id):
 def campaign_generate(campaign_id):
     """Trigger ad generation for a campaign (runs synchronously for now)."""
     campaign = Campaign.query.get_or_404(campaign_id)
+    rejected = _reject_push_automation(campaign)
+    if rejected:
+        return rejected
 
     from app.pipeline.runner import run_pipeline
     ad_run = run_pipeline(campaign.id, triggered_by="manual")
@@ -518,6 +524,9 @@ def campaign_generate(campaign_id):
 def campaign_stage_override(campaign_id):
     """Stage a manual override script to be used for the campaign's next run."""
     campaign = Campaign.query.get_or_404(campaign_id)
+    rejected = _reject_push_automation(campaign)
+    if rejected:
+        return rejected
     script = request.form.get("manual_override_script", "").strip()
 
     if not script:
@@ -537,6 +546,9 @@ def campaign_stage_override(campaign_id):
 def campaign_cancel_override(campaign_id):
     """Cancel a staged override before it's consumed by a run."""
     campaign = Campaign.query.get_or_404(campaign_id)
+    rejected = _reject_push_automation(campaign)
+    if rejected:
+        return rejected
     campaign.use_manual_override = False
     db.session.commit()
 
@@ -767,6 +779,7 @@ def campaign_edit(campaign_id):
             campaign.fallback_script = None
         if not campaign.cron_schedule:
             campaign.cron_schedule = None
+        _normalize_push_campaign(campaign)
 
         db.session.commit()
 
@@ -792,6 +805,41 @@ def campaign_edit(campaign_id):
 
 
 # ---- Helpers ----
+
+def _reject_push_automation(campaign):
+    """Redirect with a flash if an AI action was posted for a push campaign.
+
+    The templates hide these controls, so reaching here means a stale page or
+    a hand-rolled POST. Returns a response to return, or None to carry on.
+    """
+    if not campaign.is_push:
+        return None
+    flash(
+        "This is a push campaign — its creative comes from the drop app, "
+        "so there is nothing to generate.",
+        "warning",
+    )
+    return redirect(url_for("admin.campaign_detail", campaign_id=campaign.id))
+
+
+def _normalize_push_campaign(campaign):
+    """Strip the automation config a push campaign must never act on.
+
+    feed_type is NOT NULL, so it gets a marker value rather than being blanked.
+    Clearing cron_schedule is what actually stops the scheduler picking the
+    campaign up; the is_push check in run_due_campaigns is the belt to this
+    braces, and both matter because a campaign can be switched to push after
+    it already has a schedule.
+    """
+    if not campaign.is_push:
+        return
+    campaign.feed_type = PUSH_FEED_TYPE
+    campaign.feed_url = None
+    campaign.feed_config = None
+    campaign.cron_schedule = None
+    campaign.manual_override_script = None
+    campaign.use_manual_override = False
+
 
 def _save_feed_filter_config(campaign, form):
     """Merge the feed filter fields into the campaign's feed_config JSON.

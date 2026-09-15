@@ -58,8 +58,10 @@ class TestScoping:
         acme, other = _advertiser("Acme"), _advertiser("Other")
         _, acme_key = create_key(acme, "a")
         _, other_key = create_key(other, "o")
-        acme_campaign = Campaign(name="Acme Spring", advertiser_id=acme.id, feed_type="weather")
-        other_campaign = Campaign(name="Other Fall", advertiser_id=other.id, feed_type="weather")
+        acme_campaign = Campaign(name="Acme Spring", advertiser_id=acme.id,
+                                 feed_type="push", campaign_type="push")
+        other_campaign = Campaign(name="Other Fall", advertiser_id=other.id,
+                                  feed_type="push", campaign_type="push")
         _db.session.add_all([acme_campaign, other_campaign])
         _db.session.commit()
 

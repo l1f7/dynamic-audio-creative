@@ -15,6 +15,7 @@ from app.api import api_bp
 from app.api.auth import require_advertiser_key
 from app.extensions import db
 from app.models import AdRun, Campaign
+from app.models.campaign import CAMPAIGN_TYPE_PUSH
 from app.push import service
 from app.push.audio import PushRejected
 from app.storage import s3
@@ -38,8 +39,17 @@ def _json_http_error(exc):
 
 
 def _visible_campaign(campaign_id: int) -> Campaign:
+    """A key reaches only its own advertiser's active push campaigns.
+
+    Automated campaigns are deliberately 404 rather than 403: the daemon has
+    no business knowing they exist, and a type change should read to it as
+    the campaign simply going away.
+    """
     campaign = Campaign.query.filter_by(
-        id=campaign_id, advertiser_id=g.advertiser.id, is_active=True
+        id=campaign_id,
+        advertiser_id=g.advertiser.id,
+        is_active=True,
+        campaign_type=CAMPAIGN_TYPE_PUSH,
     ).first()
     if campaign is None:
         abort(404, "Campaign not found")
@@ -124,8 +134,13 @@ def me():
 @api_bp.route("/campaigns", methods=["GET"])
 @require_advertiser_key
 def list_campaigns():
+    """Push campaigns for this key's advertiser — the drop app's whole registry."""
     campaigns = (
-        Campaign.query.filter_by(advertiser_id=g.advertiser.id, is_active=True)
+        Campaign.query.filter_by(
+            advertiser_id=g.advertiser.id,
+            is_active=True,
+            campaign_type=CAMPAIGN_TYPE_PUSH,
+        )
         .order_by(Campaign.name)
         .all()
     )
@@ -194,7 +209,11 @@ def push(campaign_id):
 def run_status(run_id):
     run = (
         AdRun.query.join(Campaign)
-        .filter(AdRun.id == run_id, Campaign.advertiser_id == g.advertiser.id)
+        .filter(
+            AdRun.id == run_id,
+            Campaign.advertiser_id == g.advertiser.id,
+            Campaign.campaign_type == CAMPAIGN_TYPE_PUSH,
+        )
         .first()
     )
     if run is None:

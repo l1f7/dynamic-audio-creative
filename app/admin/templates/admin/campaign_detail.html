@@ -5,17 +5,55 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2>{{ campaign.name }}</h2>
-        <p class="text-muted mb-0">{{ campaign.advertiser.name }} &middot; {{ campaign.feed_type }} &middot; {{ campaign.target_city or 'No city' }}</p>
+        <p class="text-muted mb-0">
+            {{ campaign.advertiser.name }}
+            {% if campaign.is_push %}
+                &middot; <span class="badge bg-primary">Push</span>
+            {% else %}
+                &middot; {{ campaign.feed_type }}
+            {% endif %}
+            &middot; {{ campaign.target_city or 'No city' }}
+        </p>
     </div>
     <div>
         <a href="{{ url_for('admin.campaign_edit', campaign_id=campaign.id) }}" class="btn btn-outline-secondary">Edit</a>
+        {% if not campaign.is_push %}
         <form method="POST" action="{{ url_for('admin.campaign_generate', campaign_id=campaign.id) }}" class="d-inline">
             <button type="submit" class="btn btn-primary ms-2" onclick="this.disabled=true; this.innerHTML='Generating...'; this.form.submit();">Generate Now</button>
         </form>
+        {% endif %}
     </div>
 </div>
 
 <!-- Config summary -->
+{% if campaign.is_push %}
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-subtitle text-muted mb-2">Creative source</h6>
+                <p class="mb-0">Pushed from the drop app — no AI generation runs for this campaign.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-subtitle text-muted mb-2">Frequency App ID</h6>
+                <p class="mb-0">{{ campaign.frequency_app_id or 'Not set' }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-subtitle text-muted mb-2">Delivery</h6>
+                <p class="mb-0">{{ 'Enabled' if campaign.delivery_enabled else 'Paused' }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
 <div class="row mb-4">
     <div class="col-md-3">
         <div class="card">
@@ -50,7 +88,9 @@
         </div>
     </div>
 </div>
+{% endif %}
 
+{% if not campaign.is_push %}
 <div class="card mb-4">
     <details{% if campaign.use_manual_override %} open{% endif %}>
     <summary class="card-header" style="cursor: pointer;">
@@ -76,6 +116,7 @@
     </div>
     </details>
 </div>
+{% endif %}
 
 <!-- Runs -->
 <h4 class="mt-4 mb-3">Recent Runs</h4>

@@ -7,7 +7,7 @@
     <a href="{{ url_for('admin.advertiser_edit', adv_id=advertiser.id) }}" class="btn btn-outline-secondary">Back to Advertiser</a>
 </div>
 
-<p class="text-muted">Each desktop watch-folder station gets its own key, entered once in the drop app. A key only sees this advertiser's campaigns. Only a hash is stored, so a lost key must be replaced.</p>
+<p class="text-muted">Each desktop watch-folder station gets its own key, entered once in the drop app. A key sees only this advertiser's <strong>Push</strong> campaigns &mdash; automated ones are invisible to it. Only a hash is stored, so a lost key must be replaced.</p>
 
 {% if plaintext %}
 <div class="alert alert-success">

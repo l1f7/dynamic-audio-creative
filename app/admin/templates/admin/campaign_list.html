@@ -12,6 +12,7 @@
         <tr>
             <th>Name</th>
             <th>Advertiser</th>
+            <th>Type</th>
             <th>Feed Type</th>
             <th>Voice</th>
             <th>City</th>
@@ -24,8 +25,15 @@
         <tr>
             <td><a href="{{ url_for('admin.campaign_detail', campaign_id=c.id) }}"><strong>{{ c.name }}</strong></a></td>
             <td>{{ c.advertiser.name }}</td>
-            <td><span class="badge bg-info">{{ c.feed_type }}</span></td>
-            <td>{{ c.effective_voice_name }}</td>
+            <td>
+                {% if c.is_push %}
+                    <span class="badge bg-primary">Push</span>
+                {% else %}
+                    <span class="badge bg-secondary">Automated</span>
+                {% endif %}
+            </td>
+            <td>{% if c.is_push %}—{% else %}<span class="badge bg-info">{{ c.feed_type }}</span>{% endif %}</td>
+            <td>{{ '—' if c.is_push else c.effective_voice_name }}</td>
             <td>{{ c.target_city or '—' }}</td>
             <td>
                 {% if c.is_active %}

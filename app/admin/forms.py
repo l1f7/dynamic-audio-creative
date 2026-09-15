@@ -15,7 +15,7 @@ from wtforms import (
 from wtforms.validators import DataRequired, EqualTo, Length, NumberRange, Optional, Regexp, ValidationError
 
 from app.models import AdminUser
-from app.models.campaign import PRESET_VOICES
+from app.models.campaign import CAMPAIGN_TYPE_AUTOMATED, CAMPAIGN_TYPE_CHOICES, CAMPAIGN_TYPE_PUSH, PRESET_VOICES
 
 PASSWORD_MIN_LENGTH = 12
 EMAIL_REGEX = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
@@ -46,9 +46,16 @@ class CampaignForm(FlaskForm):
     name = StringField("Campaign Name", validators=[DataRequired()])
     advertiser_id = SelectField("Advertiser", coerce=int, validators=[DataRequired()])
     is_active = BooleanField("Active", default=True)
+    campaign_type = SelectField(
+        "Campaign Type",
+        choices=CAMPAIGN_TYPE_CHOICES,
+        default=CAMPAIGN_TYPE_AUTOMATED,
+        validators=[DataRequired()],
+    )
 
-    # Feed
-    feed_type = StringField("Feed Type", validators=[DataRequired()])
+    # Feed — conditionally required; no Optional() here, it raises StopValidation
+    # and would skip validate_feed_type entirely.
+    feed_type = StringField("Feed Type")
     feed_url = StringField("Feed URL", validators=[Optional()])
     feed_filter_key = StringField("Filter Key", validators=[Optional()])
     feed_filter_contains = StringField("Filter Contains", validators=[Optional()])
@@ -115,6 +122,17 @@ class CampaignForm(FlaskForm):
     frequency_app_id = StringField("Frequency App ID", validators=[Optional()])
     dv360_enabled = BooleanField("Enable DV360 Delivery", default=False)
     dv360_line_item_id = StringField("DV360 Line Item ID", validators=[Optional()])
+
+    @property
+    def is_push(self) -> bool:
+        return self.campaign_type.data == CAMPAIGN_TYPE_PUSH
+
+    def validate_feed_type(self, field):
+        """A push campaign has no feed; an automated one cannot work without one."""
+        if self.is_push:
+            return
+        if not (field.data or "").strip():
+            raise ValidationError("Feed type is required for an automated campaign.")
 
 
 class AdminUserCreateForm(FlaskForm):

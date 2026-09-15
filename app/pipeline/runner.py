@@ -15,7 +15,7 @@ from app.pipeline.feeds import get_feed
 from app.pipeline.script_gen import generate_script
 from app.pipeline.voiceover import generate_voiceover
 from app.pipeline.mixer import mix_audio
-from app.pipeline.exceptions import FeedFetchError, PipelineError
+from app.pipeline.exceptions import FeedFetchError, PipelineError, PushCampaignError
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +29,20 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
 
     Returns:
         The AdRun instance (complete or failed).
+
+    Raises:
+        PushCampaignError: the campaign receives creative from the drop app.
     """
     campaign = db.session.get(Campaign, campaign_id)
     if not campaign:
         raise ValueError(f"Campaign {campaign_id} not found")
+    if campaign.is_push:
+        # Every caller is expected to check first; this is the backstop that
+        # keeps a push campaign's delivered creative from being overwritten
+        # by a generated one. No AdRun is created.
+        raise PushCampaignError(
+            f"Campaign {campaign_id} is a push campaign — creative comes from the drop app"
+        )
 
     # Create the run record
     ad_run = AdRun(

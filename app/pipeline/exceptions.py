@@ -29,3 +29,8 @@ class VoiceoverGenerationError(PipelineError):
 class MixingError(PipelineError):
     """FFmpeg mixing failed."""
     pass
+
+
+class PushCampaignError(PipelineError):
+    """The AI pipeline was asked to run for a push campaign."""
+    pass

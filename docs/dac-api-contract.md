@@ -18,9 +18,13 @@ cheap.
 ```
 
 ### `GET /campaigns`
-Campaigns visible to this key's advertiser. **This is the endpoint that makes
-the whole product work** — Frequency has no campaign listing, DAC's database
-does.
+The advertiser's **push** campaigns. **This is the endpoint that makes the
+whole product work** — Frequency has no campaign listing, DAC's database does.
+
+Only campaigns whose type is `push` are ever returned. DAC's other campaigns
+generate their own creative from a feed, and a pushed file would be overwritten
+by the next scheduled run, so they are invisible to the daemon — as is any
+campaign that is not active.
 ```json
 [{ "id": 41, "name": "Spring Sale", "advertiser_name": "Acme Motors",
    "delivery_enabled": true, "deliverable": true }]
@@ -43,7 +47,10 @@ Answers one of:
 `duplicate_run_id` when `(campaign_id, content_hash)` already has a delivered
 run. The daemon skips the upload entirely.
 
-`404` if the campaign is not visible to this key.
+`404` if the campaign is not visible to this key — a campaign belonging to
+another advertiser, one that is inactive, and one that is not a push campaign
+are all the same `404`. Every `/campaigns/{id}/…` endpoint scopes the same way,
+so a campaign switched away from push type reads to the daemon as simply gone.
 
 **The presigned PUT must be signed for the same `content_type` the daemon
 sends**, or S3 rejects the signature. The daemon sends what it declared here.
@@ -106,3 +113,6 @@ No upload: DAC still holds the file.
 * Delivery is tick-driven (`POST /scheduler/tick`, Render cron), so a pushed run
   is `pending` for up to one cron interval before `delivering`.
 * The 422 body is `text/plain`. All other errors are JSON `{"error": "..."}`.
+* Campaign type is set in the DAC admin. An advertiser's key grants read access
+  to their push campaigns and nothing else; switching a campaign to push clears
+  its feed, schedule and script settings, and no AI pipeline runs for it again.

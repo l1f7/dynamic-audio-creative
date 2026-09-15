@@ -19,6 +19,19 @@ PRESET_VOICES = {
 # Common feed types shown as suggestions — but any value is accepted
 FEED_TYPE_SUGGESTIONS = ["weather", "concerts", "events", "news", "sports", "custom"]
 
+# How a campaign gets its creative.
+#   automated — the AI pipeline builds it: feed → script → voiceover → mix
+#   push      — the drop application uploads finished audio over /api/v1
+CAMPAIGN_TYPE_AUTOMATED = "automated"
+CAMPAIGN_TYPE_PUSH = "push"
+CAMPAIGN_TYPE_CHOICES = [
+    (CAMPAIGN_TYPE_AUTOMATED, "Automated — generate from a feed"),
+    (CAMPAIGN_TYPE_PUSH, "Push — receive creative from the drop app"),
+]
+
+# feed_type is NOT NULL but means nothing for a push campaign; store this.
+PUSH_FEED_TYPE = "push"
+
 
 class Campaign(db.Model):
     __tablename__ = "campaigns"
@@ -29,6 +42,12 @@ class Campaign(db.Model):
     )
     name = db.Column(db.String(200), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    campaign_type = db.Column(
+        db.String(20),
+        default=CAMPAIGN_TYPE_AUTOMATED,
+        server_default=CAMPAIGN_TYPE_AUTOMATED,
+        nullable=False,
+    )
 
     # Feed configuration
     feed_type = db.Column(db.String(50), nullable=False)
@@ -91,6 +110,11 @@ class Campaign(db.Model):
         lazy="dynamic",
         order_by="AdRun.created_at.desc()",
     )
+
+    @property
+    def is_push(self) -> bool:
+        """Push campaigns receive finished audio; no AI stage ever runs for them."""
+        return self.campaign_type == CAMPAIGN_TYPE_PUSH
 
     @property
     def effective_voice_id(self):
