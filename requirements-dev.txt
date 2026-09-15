@@ -1,0 +1,10 @@
+# Test-only dependencies. Install with:
+#   pip install -r requirements.txt -r requirements-dev.txt
+-r requirements.txt
+
+pytest==9.1.1
+
+# Ships real Postgres binaries as a wheel, so the migration tests can run a
+# throwaway server with no Docker and no system install. CI sets
+# TEST_DATABASE_URL against a service container instead and ignores this.
+pgserver==0.1.4

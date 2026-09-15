@@ -91,7 +91,11 @@ class Campaign(db.Model):
     delivery_enabled = db.Column(db.Boolean, default=False)
     delivery_config = db.Column(db.JSON, nullable=True)
     frequency_app_id = db.Column(db.String(100), nullable=True)
-    dv360_enabled = db.Column(db.Boolean, default=False)
+    # NOT NULL in the database since d4e5f6a7b8c9 — keep the model saying so,
+    # or SQLite-backed tests accept a None that Postgres rejects in production.
+    dv360_enabled = db.Column(
+        db.Boolean, default=False, server_default=db.false(), nullable=False
+    )
     dv360_line_item_id = db.Column(db.String(100), nullable=True)
 
     created_at = db.Column(db.DateTime, server_default=db.func.now())

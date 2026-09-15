@@ -183,8 +183,32 @@ flask db downgrade
 ## Running Tests
 
 ```bash
+pip install -r requirements.txt -r requirements-dev.txt
 pytest
 ```
+
+Most tests build their schema from the models on in-memory SQLite and are fast.
+
+`tests/test_migrations.py` is different: it runs the real migration chain from
+base to head against **Postgres**, then asserts the resulting schema matches the
+models, using Alembic's own autogenerate diff. That catches drift SQLite cannot
+— column types and nullability — and it is what stops a broken migration chain
+reaching Render, the way a second head once did.
+
+It gets a Postgres one of two ways:
+
+* `TEST_DATABASE_URL` if set — CI points this at a service container.
+* otherwise `pgserver` (in `requirements-dev.txt`), which ships Postgres
+  binaries as a wheel, so no Docker or system install is needed.
+
+With neither, those tests skip. They never fall back to SQLite — the engine is
+the point.
+
+**If the drift test fails**, the message names what Alembic would generate, e.g.
+`add_column campaigns.foo`. That means a model changed without a migration:
+run `flask db migrate -m "..."`, review the generated file, and commit it.
+
+CI (`.github/workflows/ci.yml`) runs all of this on every push and pull request.
 
 ---
 
