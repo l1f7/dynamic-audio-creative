@@ -4,6 +4,9 @@ import pytest
 
 from app.delivery.frequency import (
     FrequencyNotConfiguredError,
+    _creative_list,
+    _row_index_for_new_creative,
+    _serve_option_for_new_creative,
     deliver_ad,
     is_delivery_available,
 )
@@ -71,3 +74,44 @@ class TestFrequencyConfigGuards:
             app.config.pop("CMPAPI_BASE_URL")
 
         assert "no frequency app id" in str(exc_info.value).lower()
+
+
+class TestExistingCreatives:
+    """The generated ad joins whatever creative the ad unit already carries."""
+
+    def test_creative_list_accepts_bare_array(self):
+        assert _creative_list([{"fileName": "a.mp3"}]) == [{"fileName": "a.mp3"}]
+
+    def test_creative_list_unwraps_envelopes(self):
+        for key in ("creatives", "data", "rows", "result"):
+            assert _creative_list({key: [{"fileName": "a.mp3"}]}) == [{"fileName": "a.mp3"}]
+
+    def test_creative_list_tolerates_unexpected_shapes(self):
+        assert _creative_list({"message": "no creatives"}) == []
+        assert _creative_list(None) == []
+        assert _creative_list([{"fileName": "a.mp3"}, "junk"]) == [{"fileName": "a.mp3"}]
+
+    def test_row_index_defaults_to_zero_when_draft_is_empty(self):
+        assert _row_index_for_new_creative([]) == 0
+
+    def test_row_index_joins_lowest_existing_audio_row(self):
+        existing = [
+            {"type": "audio", "rowIndex": 2},
+            {"type": "audio", "rowIndex": 1},
+        ]
+        assert _row_index_for_new_creative(existing) == 1
+
+    def test_row_index_ignores_non_audio_creatives(self):
+        existing = [{"type": "image", "rowIndex": 3}]
+        assert _row_index_for_new_creative(existing) == 0
+
+    def test_row_index_tolerates_missing_or_bad_values(self):
+        existing = [{"type": "audio"}, {"type": "audio", "rowIndex": "not-a-number"}]
+        assert _row_index_for_new_creative(existing) == 0
+
+    def test_serve_option_matches_existing_creative(self):
+        assert _serve_option_for_new_creative([{"serveOption": "sequential"}]) == "sequential"
+
+    def test_serve_option_defaults_to_random(self):
+        assert _serve_option_for_new_creative([]) == "random"
+        assert _serve_option_for_new_creative([{"serveOption": None}]) == "random"
