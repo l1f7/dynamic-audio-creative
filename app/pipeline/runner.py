@@ -9,8 +9,16 @@ import os
 import random
 from datetime import datetime, timezone
 
+from app.delivery.targets import deliver_run
 from app.extensions import db
 from app.models import AdRun, Campaign
+from app.models.ad_run import (
+    DELIVERY_FAILED,
+    STATUS_COMPLETE,
+    STATUS_DELIVERING,
+    STATUS_FAILED,
+)
+from app.models.delivery_attempt import TARGET_DV360, TARGET_FREQUENCY
 from app.pipeline.feeds import get_feed
 from app.pipeline.script_gen import generate_script
 from app.pipeline.voiceover import generate_voiceover
@@ -18,6 +26,33 @@ from app.pipeline.mixer import mix_audio
 from app.pipeline.exceptions import FeedFetchError, PipelineError, PushCampaignError
 
 logger = logging.getLogger(__name__)
+
+
+def _requested_targets(deliver_frequency: bool, deliver_dv360: bool) -> list[str]:
+    """Which ad servers the admin ticked on the rerun/redeliver form."""
+    chosen = []
+    if deliver_frequency:
+        chosen.append(TARGET_FREQUENCY)
+    if deliver_dv360:
+        chosen.append(TARGET_DV360)
+    return chosen
+
+
+def _settle_run(ad_run: AdRun) -> None:
+    """Give the run its terminal status once delivery has been attempted.
+
+    The audio can be perfect and still reach nobody. Every path used to set
+    "complete" here regardless, so a run both ad servers rejected showed a
+    green Complete badge — the failure lived only in a delivery error field
+    that nothing surfaced. A run where every attempted target failed is a
+    failed run, which is what the pushed-file path has always done.
+    """
+    if ad_run.delivery_state == DELIVERY_FAILED:
+        ad_run.status = STATUS_FAILED
+        ad_run.error_message = "; ".join(ad_run.delivery_errors)
+    else:
+        ad_run.status = STATUS_COMPLETE
+    ad_run.completed_at = datetime.now(timezone.utc)
 
 
 def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
@@ -124,102 +159,30 @@ def run_pipeline(campaign_id: int, triggered_by: str = "manual") -> AdRun:
         _save_outputs(ad_run, vo_bytes, final_bytes)
         del vo_bytes, music_bytes  # free intermediate buffers before delivery
 
-        # 7. Deliver to Frequency (if enabled and app ID is set for this campaign)
-        if not campaign.delivery_enabled:
-            logger.warning("[Frequency] SKIP run #%d — delivery_enabled=False on campaign '%s'",
-                           ad_run.id, campaign.name)
-        elif not campaign.frequency_app_id:
-            logger.warning("[Frequency] SKIP run #%d — no frequency_app_id on campaign '%s'",
-                           ad_run.id, campaign.name)
-        else:
-            from app.delivery.frequency import (
-                deliver_ad,
-                is_delivery_available,
-                FrequencyDeliveryError,
-                FrequencyNotConfiguredError,
-            )
-            from flask import current_app
-            cfg = current_app.config
-            freq_enabled = cfg.get("FREQUENCY_ENABLED")
-            base_url = cfg.get("CMPAPI_BASE_URL")
-            logger.info("[Frequency] config check — FREQUENCY_ENABLED=%s  CMPAPI_BASE_URL=%s",
-                        freq_enabled, base_url or "(not set)")
-            if not is_delivery_available():
-                logger.warning(
-                    "[Frequency] SKIP run #%d — delivery not available "
-                    "(FREQUENCY_ENABLED=%s, CMPAPI_BASE_URL=%s)",
-                    ad_run.id, freq_enabled, base_url or "(not set)",
-                )
-            else:
-                _update_status(ad_run, "delivering")
-                try:
-                    vast_xml = deliver_ad(ad_run, final_bytes)
-                    ad_run.vast_response = vast_xml
-                    ad_run.delivered_at = datetime.now(timezone.utc)
-                    ad_run.delivery_reference = "frequency"
-                    db.session.commit()
-                    logger.info("[Frequency] Delivered successfully for run #%d", ad_run.id)
-                except (FrequencyDeliveryError, FrequencyNotConfiguredError) as exc:
-                    ad_run.delivery_error = str(exc)
-                    db.session.commit()
-                    logger.error("[Frequency] Delivery FAILED for run #%d: %s", ad_run.id, exc)
-
-        # 8. Deliver to DV360 (if enabled)
-        if not campaign.dv360_enabled:
-            logger.info("[DV360] SKIP run #%d — dv360_enabled=False on campaign '%s'",
-                        ad_run.id, campaign.name)
-        elif not campaign.dv360_line_item_id:
-            logger.warning("[DV360] SKIP run #%d — no dv360_line_item_id on campaign '%s'",
-                           ad_run.id, campaign.name)
-        else:
-            from app.delivery.dv360 import (
-                deliver_ad as dv360_deliver_ad,
-                is_delivery_available as dv360_available,
-                DV360DeliveryError,
-                DV360NotConfiguredError,
-            )
-            from flask import current_app as _app
-            logger.info("[DV360] config check — DV360_ENABLED=%s",
-                        _app.config.get("DV360_ENABLED"))
-            if not dv360_available():
-                logger.warning(
-                    "[DV360] SKIP run #%d — DV360_ENABLED is not set to true",
-                    ad_run.id,
-                )
-            else:
-                _update_status(ad_run, "delivering")
-                try:
-                    creative_name = dv360_deliver_ad(ad_run, final_bytes)
-                    ad_run.dv360_delivered_at = datetime.now(timezone.utc)
-                    ad_run.dv360_creative_name = creative_name
-                    db.session.commit()
-                    logger.info("[DV360] Delivered successfully for run #%d — %s",
-                                ad_run.id, creative_name)
-                except (DV360DeliveryError, DV360NotConfiguredError) as exc:
-                    ad_run.dv360_delivery_error = str(exc)
-                    db.session.commit()
-                    logger.error("[DV360] Delivery FAILED for run #%d: %s", ad_run.id, exc)
-
+        # 7. Deliver to every ad server configured for this campaign
+        deliver_run(
+            ad_run, final_bytes,
+            on_first_attempt=lambda: _update_status(ad_run, STATUS_DELIVERING),
+        )
         # 9. Done
-        ad_run.status = "complete"
-        ad_run.completed_at = datetime.now(timezone.utc)
+        _settle_run(ad_run)
         # One-shot: consume the override only on success, so a failed run
         # leaves it armed and a retry still uses the staged script.
-        if ad_run.script_source == "manual_override":
+        if ad_run.status == STATUS_COMPLETE and ad_run.script_source == "manual_override":
             campaign.use_manual_override = False
         db.session.commit()
 
         logger.info("Pipeline complete for run #%d", ad_run.id)
 
     except PipelineError as exc:
-        ad_run.status = "failed"
+        ad_run.status = STATUS_FAILED
         ad_run.error_message = str(exc)
         ad_run.completed_at = datetime.now(timezone.utc)
         db.session.commit()
         logger.error("Pipeline failed for run #%d: %s", ad_run.id, exc)
 
     except Exception as exc:
-        ad_run.status = "failed"
+        ad_run.status = STATUS_FAILED
         ad_run.error_message = f"Unexpected error: {exc}"
         ad_run.completed_at = datetime.now(timezone.utc)
         db.session.commit()
@@ -276,67 +239,28 @@ def rerun_from_script(source_run_id: int, script: str, deliver_frequency: bool =
         _save_outputs(new_run, vo_bytes, final_bytes)
         del vo_bytes, music_bytes  # free intermediate buffers before delivery
 
-        # Deliver to Frequency if configured and requested
-        if not deliver_frequency:
-            logger.info("[Frequency] SKIP rerun #%d — unchecked by user", new_run.id)
-        elif campaign.delivery_enabled and campaign.frequency_app_id:
-            from app.delivery.frequency import (
-                deliver_ad,
-                is_delivery_available,
-                FrequencyDeliveryError,
-                FrequencyNotConfiguredError,
-            )
-            if is_delivery_available():
-                _update_status(new_run, "delivering")
-                try:
-                    vast_xml = deliver_ad(new_run, final_bytes)
-                    new_run.vast_response = vast_xml
-                    new_run.delivered_at = datetime.now(timezone.utc)
-                    new_run.delivery_reference = "frequency"
-                    db.session.commit()
-                    logger.info("[Frequency] Delivered for rerun #%d", new_run.id)
-                except (FrequencyDeliveryError, FrequencyNotConfiguredError) as exc:
-                    new_run.delivery_error = str(exc)
-                    db.session.commit()
-                    logger.error("[Frequency] Delivery failed for rerun #%d: %s", new_run.id, exc)
+        deliver_run(
+            new_run, final_bytes,
+            only=_requested_targets(deliver_frequency, deliver_dv360),
+            on_first_attempt=lambda: _update_status(new_run, STATUS_DELIVERING),
+        )
 
-        # Deliver to DV360 if configured and requested
-        if not deliver_dv360:
-            logger.info("[DV360] SKIP rerun #%d — unchecked by user", new_run.id)
-        elif campaign.dv360_enabled and campaign.dv360_line_item_id:
-            from app.delivery.dv360 import (
-                deliver_ad as dv360_deliver_ad,
-                is_delivery_available as dv360_available,
-                DV360DeliveryError,
-                DV360NotConfiguredError,
-            )
-            if dv360_available():
-                _update_status(new_run, "delivering")
-                try:
-                    creative_name = dv360_deliver_ad(new_run, final_bytes)
-                    new_run.dv360_delivered_at = datetime.now(timezone.utc)
-                    new_run.dv360_creative_name = creative_name
-                    db.session.commit()
-                    logger.info("[DV360] Delivered for rerun #%d — %s", new_run.id, creative_name)
-                except (DV360DeliveryError, DV360NotConfiguredError) as exc:
-                    new_run.dv360_delivery_error = str(exc)
-                    db.session.commit()
-                    logger.error("[DV360] Delivery failed for rerun #%d: %s", new_run.id, exc)
-
-        new_run.status = "complete"
-        new_run.completed_at = datetime.now(timezone.utc)
+        _settle_run(new_run)
         db.session.commit()
-        logger.info("Rerun complete — new run #%d (source #%d)", new_run.id, source_run_id)
+        logger.info(
+            "Rerun finished — new run #%d (source #%d) status=%s delivery=%s",
+            new_run.id, source_run_id, new_run.status, new_run.delivery_state,
+        )
 
     except PipelineError as exc:
-        new_run.status = "failed"
+        new_run.status = STATUS_FAILED
         new_run.error_message = str(exc)
         new_run.completed_at = datetime.now(timezone.utc)
         db.session.commit()
         logger.error("Rerun failed for new run #%d: %s", new_run.id, exc)
 
     except Exception as exc:
-        new_run.status = "failed"
+        new_run.status = STATUS_FAILED
         new_run.error_message = f"Unexpected error: {exc}"
         new_run.completed_at = datetime.now(timezone.utc)
         db.session.commit()
@@ -361,62 +285,18 @@ def redeliver(run_id: int, deliver_frequency: bool = False, deliver_dv360: bool 
     # Load the final ad bytes
     final_bytes = _load_final_ad(ad_run)
 
-    if deliver_frequency:
-        if not (campaign.delivery_enabled and campaign.frequency_app_id):
-            logger.warning("[Frequency] SKIP redeliver run #%d — not configured", ad_run.id)
-        else:
-            from app.delivery.frequency import (
-                deliver_ad,
-                is_delivery_available,
-                FrequencyDeliveryError,
-                FrequencyNotConfiguredError,
-            )
-            if not is_delivery_available():
-                logger.warning("[Frequency] SKIP redeliver run #%d — delivery not available", ad_run.id)
-            else:
-                _update_status(ad_run, "delivering")
-                try:
-                    vast_xml = deliver_ad(ad_run, final_bytes)
-                    ad_run.vast_response = vast_xml
-                    ad_run.delivered_at = datetime.now(timezone.utc)
-                    ad_run.delivery_reference = "frequency"
-                    ad_run.delivery_error = None
-                    db.session.commit()
-                    logger.info("[Frequency] Redelivered successfully for run #%d", ad_run.id)
-                except (FrequencyDeliveryError, FrequencyNotConfiguredError) as exc:
-                    ad_run.delivery_error = str(exc)
-                    db.session.commit()
-                    logger.error("[Frequency] Redelivery FAILED for run #%d: %s", ad_run.id, exc)
+    deliver_run(
+        ad_run, final_bytes,
+        only=_requested_targets(deliver_frequency, deliver_dv360),
+        on_first_attempt=lambda: _update_status(ad_run, STATUS_DELIVERING),
+    )
 
-    if deliver_dv360:
-        if not (campaign.dv360_enabled and campaign.dv360_line_item_id):
-            logger.warning("[DV360] SKIP redeliver run #%d — not configured", ad_run.id)
-        else:
-            from app.delivery.dv360 import (
-                deliver_ad as dv360_deliver_ad,
-                is_delivery_available as dv360_available,
-                DV360DeliveryError,
-                DV360NotConfiguredError,
-            )
-            if not dv360_available():
-                logger.warning("[DV360] SKIP redeliver run #%d — DV360 not available", ad_run.id)
-            else:
-                _update_status(ad_run, "delivering")
-                try:
-                    creative_name = dv360_deliver_ad(ad_run, final_bytes)
-                    ad_run.dv360_delivered_at = datetime.now(timezone.utc)
-                    ad_run.dv360_creative_name = creative_name
-                    ad_run.dv360_delivery_error = None
-                    db.session.commit()
-                    logger.info("[DV360] Redelivered successfully for run #%d — %s", ad_run.id, creative_name)
-                except (DV360DeliveryError, DV360NotConfiguredError) as exc:
-                    ad_run.dv360_delivery_error = str(exc)
-                    db.session.commit()
-                    logger.error("[DV360] Redelivery FAILED for run #%d: %s", ad_run.id, exc)
-
-    ad_run.status = "complete"
+    _settle_run(ad_run)
     db.session.commit()
-    logger.info("Redelivery complete for run #%d", ad_run.id)
+    logger.info(
+        "Redelivery finished for run #%d — status=%s delivery=%s",
+        ad_run.id, ad_run.status, ad_run.delivery_state,
+    )
 
     return ad_run
 

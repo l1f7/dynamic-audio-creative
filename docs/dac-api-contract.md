@@ -76,6 +76,9 @@ shown verbatim next to the file in the UI.
 ```json
 { "run_id": 904, "status": "complete", "delivery_error": null }
 ```
+`delivery_error` is the verdict of the *latest* delivery attempt, and is always
+`null` while the run is still going. A re-pushed file that previously failed
+keeps that failure in DAC's own history, but reports no error while it retries.
 `status` is `AdRun.status` unchanged. The daemon only distinguishes `complete`,
 `failed`, and "still going".
 

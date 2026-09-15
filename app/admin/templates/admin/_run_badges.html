@@ -1,0 +1,37 @@
+{# How a run's outcome renders, in one place.
+
+   Two separate answers, deliberately shown separately: `status` is whether we
+   produced the audio, `delivery_state` is whether any ad server received it.
+   Conflating them is what let a run that reached nobody show a green Complete. #}
+
+{% macro run_badges(run, size="") %}
+    {% if run.status == 'complete' %}
+        <span class="badge badge-status-complete {{ size }}">{{ run.status_label }}</span>
+    {% elif run.status == 'failed' %}
+        <span class="badge badge-status-failed {{ size }}">{{ run.status_label }}</span>
+    {% elif run.is_terminal %}
+        <span class="badge badge-status-pending {{ size }}">{{ run.status_label }}</span>
+    {% else %}
+        <span class="badge badge-status-running {{ size }}">{{ run.status_label }}</span>
+    {% endif %}
+
+    {% if run.delivery_state == 'delivered' %}
+        <span class="badge badge-delivery-ok {{ size }}" title="Delivered to every ad server that was tried">
+            {{ run.delivery_label }}
+        </span>
+    {% elif run.delivery_state == 'partial' %}
+        <span class="badge badge-delivery-partial {{ size }}"
+              title="{{ run.delivery_errors | join('; ') }}">
+            &#9888; {{ run.delivery_label }}
+        </span>
+    {% elif run.delivery_state == 'failed' %}
+        <span class="badge badge-delivery-failed {{ size }}"
+              title="{{ run.delivery_errors | join('; ') }}">
+            &#9888; {{ run.delivery_label }}
+        </span>
+    {% elif run.is_terminal %}
+        <span class="badge badge-delivery-none {{ size }}" title="No ad server delivery was attempted">
+            {{ run.delivery_label }}
+        </span>
+    {% endif %}
+{% endmacro %}

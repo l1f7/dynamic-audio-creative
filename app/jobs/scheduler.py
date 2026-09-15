@@ -11,16 +11,20 @@ from croniter import croniter
 
 from app.extensions import db
 from app.models import Campaign, AdRun
-from app.models.ad_run import TRIGGER_WATCHER
+from app.models.ad_run import (
+    DELIVERY_DELIVERED,
+    STATUS_COMPLETE,
+    STATUS_DELIVERING,
+    STATUS_FAILED,
+    STATUS_PENDING,
+    TERMINAL_STATUSES,
+    TRIGGER_WATCHER,
+)
+from app.models.delivery_attempt import TARGET_FREQUENCY
 from app.pipeline.runner import run_pipeline
 
 logger = logging.getLogger(__name__)
 
-STATUS_PENDING = "pending"
-STATUS_DELIVERING = "delivering"
-STATUS_COMPLETE = "complete"
-STATUS_FAILED = "failed"
-DELIVERY_REFERENCE_FREQUENCY = "frequency"
 
 
 def run_due_campaigns():
@@ -47,7 +51,7 @@ def run_due_campaigns():
         last_run = (
             AdRun.query
             .filter_by(campaign_id=campaign.id)
-            .filter(AdRun.status.in_(["complete", "failed"]))
+            .filter(AdRun.status.in_(TERMINAL_STATUSES))
             .order_by(AdRun.created_at.desc())
             .first()
         )
@@ -81,7 +85,7 @@ def run_due_campaigns():
         in_progress = (
             AdRun.query
             .filter_by(campaign_id=campaign.id)
-            .filter(~AdRun.status.in_(["complete", "failed"]))
+            .filter(~AdRun.status.in_(TERMINAL_STATUSES))
             .first()
         )
         if in_progress:
@@ -148,32 +152,41 @@ def _pending_pushed_runs() -> list:
 
 
 def _deliver_pushed_run(run: AdRun) -> None:
-    from app.delivery.frequency import deliver_ad
+    """Hand a pushed file to Frequency. DV360 is never a target for these."""
+    from app.delivery.targets import deliver_run
     from app.pipeline.runner import _load_final_ad
 
     # Claim the run first so a slow tick overlapping the next cannot deliver twice
     run.status = STATUS_DELIVERING
     db.session.commit()
+
     try:
-        run.vast_response = deliver_ad(run, _load_final_ad(run))
-        _mark_pushed_run_delivered(run)
+        audio = _load_final_ad(run)
     except Exception as exc:
         _mark_pushed_run_failed(run, exc)
+        return
+
+    deliver_run(run, audio, only=[TARGET_FREQUENCY])
+    _settle_pushed_run(run)
 
 
-def _mark_pushed_run_delivered(run: AdRun) -> None:
-    now = datetime.now(timezone.utc)
-    run.delivered_at = now
-    run.completed_at = now
-    run.delivery_reference = DELIVERY_REFERENCE_FREQUENCY
-    run.delivery_error = None
-    run.status = STATUS_COMPLETE
+def _settle_pushed_run(run: AdRun) -> None:
+    """Terminal status for a pushed run, from what the ad server actually did."""
+    run.completed_at = datetime.now(timezone.utc)
+    if run.delivery_state == DELIVERY_DELIVERED:
+        run.status = STATUS_COMPLETE
+        run.error_message = None
+        logger.info("[Push] Delivered run #%d", run.id)
+    else:
+        run.status = STATUS_FAILED
+        run.error_message = "; ".join(run.delivery_errors)
+        logger.error("[Push] Delivery failed for run #%d: %s", run.id, run.error_message)
     db.session.commit()
-    logger.info("[Push] Delivered run #%d", run.id)
 
 
 def _mark_pushed_run_failed(run: AdRun, exc: Exception) -> None:
-    run.delivery_error = str(exc)
+    """Failure before any ad server was reached — e.g. the audio would not load."""
+    run.record_delivery(TARGET_FREQUENCY, False, error=str(exc))
     run.error_message = str(exc)
     run.completed_at = datetime.now(timezone.utc)
     run.status = STATUS_FAILED

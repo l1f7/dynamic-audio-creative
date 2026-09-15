@@ -7,6 +7,7 @@ from botocore.exceptions import ClientError
 
 from app.extensions import db as _db
 from app.models import AdRun, Advertiser, Campaign
+from app.models.delivery_attempt import TARGET_FREQUENCY
 from app.push import audio, service
 from app.push.keys import create_key
 from tests.test_frequency_token import make_token
@@ -81,13 +82,27 @@ def _push(client, headers, campaign_id, content_hash=HASH_A, filename="spot.mp3"
     )
 
 
-def _delivered_run(campaign, content_hash=HASH_A, **overrides):
+def _delivered_run(campaign, content_hash=HASH_A, *, delivered_at=..., delivery_error=None,
+                   **overrides):
+    """A pushed run with its Frequency delivery recorded as an attempt.
+
+    delivered_at=None means "never delivered"; delivery_error makes the latest
+    attempt a failure.
+    """
+    if delivered_at is ...:
+        delivered_at = datetime.now(timezone.utc)
     fields = dict(campaign_id=campaign.id, triggered_by="watcher", status="complete",
                   source_content_hash=content_hash, source_filename="spot.wav",
-                  final_ad_s3_key="k", delivered_at=datetime.now(timezone.utc))
+                  final_ad_s3_key="k")
     fields.update(overrides)
     run = AdRun(**fields)
     _db.session.add(run)
+    _db.session.flush()
+    if delivery_error is not None:
+        run.record_delivery(TARGET_FREQUENCY, False, error=delivery_error)
+    elif delivered_at is not None:
+        run.record_delivery(TARGET_FREQUENCY, True, reference="<VAST/>")
+        run.delivery_attempts[-1].attempted_at = delivered_at
     _db.session.commit()
     return run
 
@@ -199,7 +214,11 @@ class TestPush:
         run = _delivered_run(campaign, status="failed", delivered_at=None, delivery_error="boom")
         assert _push(client, headers, campaign.id).get_json()["run_id"] == run.id
         assert run.status == "pending"
-        assert run.delivery_error is None
+        # The failed attempt survives as history, but a run being retried
+        # reports no current error to the daemon.
+        assert len(run.delivery_attempts) == 1
+        status = client.get(f"/api/v1/runs/{run.id}", headers=headers).get_json()
+        assert status["delivery_error"] is None
         assert AdRun.query.count() == 1
 
     def test_other_advertisers_campaign_is_404(self, client, headers, other_campaign, fake_storage, mp3_probe):
@@ -321,7 +340,8 @@ class TestRevert:
         def fake_redeliver(run_id, deliver_frequency=False, deliver_dv360=False):
             calls.append((run_id, deliver_frequency))
             run = _db.session.get(AdRun, run_id)
-            run.delivered_at = datetime(2026, 9, 9, tzinfo=timezone.utc)
+            run.record_delivery(TARGET_FREQUENCY, True, reference="<VAST/>")
+            run.delivery_attempts[-1].attempted_at = datetime(2026, 9, 9, tzinfo=timezone.utc)
             _db.session.commit()
         monkeypatch.setattr("app.pipeline.runner.redeliver", fake_redeliver)
         monkeypatch.setattr("app.delivery.frequency.is_delivery_available", lambda: True)
@@ -339,7 +359,7 @@ class TestRevert:
     def test_revert_failure_is_502(self, client, campaign, headers, monkeypatch):
         def failing(run_id, deliver_frequency=False, deliver_dv360=False):
             run = _db.session.get(AdRun, run_id)
-            run.delivery_error = "Frequency publish draft failed"
+            run.record_delivery(TARGET_FREQUENCY, False, error="Frequency publish draft failed")
             _db.session.commit()
         monkeypatch.setattr("app.pipeline.runner.redeliver", failing)
         monkeypatch.setattr("app.delivery.frequency.is_delivery_available", lambda: True)

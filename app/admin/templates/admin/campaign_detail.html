@@ -1,4 +1,5 @@
 {% extends "admin/base.html" %}
+{% from "admin/_run_badges.html" import run_badges %}
 {% block title %}{{ campaign.name }} — DAC Admin{% endblock %}
 
 {% block content %}
@@ -137,13 +138,7 @@
         <tr>
             <td><a href="{{ url_for('admin.run_detail', run_id=run.id) }}">#{{ run.id }}</a></td>
             <td>
-                {% if run.status == 'complete' %}
-                    <span class="badge badge-status-complete">{{ run.status_label }}</span>
-                {% elif run.status == 'failed' %}
-                    <span class="badge badge-status-failed">{{ run.status_label }}</span>
-                {% else %}
-                    <span class="badge badge-status-running">{{ run.status_label }}</span>
-                {% endif %}
+                {{ run_badges(run) }}
                 {% if run.is_heavily_stretched %}
                     <span class="badge bg-warning text-dark"
                           title="Voiceover sped up {{ run.stretch_pct }}% to fit the target duration">

@@ -1,4 +1,5 @@
 {% extends "admin/base.html" %}
+{% from "admin/_run_badges.html" import run_badges %}
 {% block title %}Run #{{ run.id }} — DAC Admin{% endblock %}
 
 {% block content %}
@@ -18,13 +19,7 @@
         </p>
     </div>
     <div class="d-flex align-items-center gap-2">
-        {% if run.status == 'complete' %}
-            <span class="badge badge-status-complete fs-6">{{ run.status_label }}</span>
-        {% elif run.status == 'failed' %}
-            <span class="badge badge-status-failed fs-6">{{ run.status_label }}</span>
-        {% else %}
-            <span class="badge badge-status-running fs-6">{{ run.status_label }}</span>
-        {% endif %}
+        {{ run_badges(run, size='fs-6') }}
         {% if run.is_heavily_stretched %}
             <span class="badge bg-warning text-dark fs-6"
                   title="Voiceover sped up {{ run.stretch_pct }}% to fit the target duration">
@@ -164,6 +159,37 @@
     </div>
 </div>
 {% endif %}
+{% endif %}
+
+{% if run.delivery_attempts | length > 1 %}
+{# More than one attempt means something was retried or redelivered. The old
+   per-target columns overwrote each other, so this history did not exist. #}
+<div class="card mb-4">
+    <div class="card-header">Delivery History</div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr><th>When</th><th>Ad server</th><th>Outcome</th><th>Detail</th></tr>
+            </thead>
+            <tbody>
+                {% for attempt in run.delivery_attempts | reverse %}
+                <tr>
+                    <td class="text-muted small">{{ attempt.attempted_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>{{ attempt.target }}</td>
+                    <td>
+                        {% if attempt.succeeded %}
+                            <span class="badge badge-delivery-ok">Delivered</span>
+                        {% else %}
+                            <span class="badge badge-delivery-failed">Failed</span>
+                        {% endif %}
+                    </td>
+                    <td class="small text-muted">{{ attempt.error or '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 {% endif %}
 
 {% if run.feed_data_snapshot %}

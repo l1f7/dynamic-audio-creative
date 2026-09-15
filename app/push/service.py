@@ -7,8 +7,13 @@ from sqlalchemy.exc import IntegrityError
 
 from app.delivery import frequency_token
 from app.extensions import db
-from app.models import AdRun, Campaign
-from app.models.ad_run import TRIGGER_WATCHER
+from app.models import AdRun, Campaign, DeliveryAttempt
+from app.models.delivery_attempt import TARGET_FREQUENCY
+from app.models.ad_run import (
+    STATUS_FAILED,
+    STATUS_PENDING,
+    TRIGGER_WATCHER,
+)
 from app.push import audio
 from app.storage import s3
 
@@ -18,11 +23,6 @@ UPLOAD_PREFIX = "pushed"
 UPLOAD_URL_TTL_SECONDS = 30 * 60  # matches the daemon's allowance for the PUT
 DEFAULT_SUFFIX = ".bin"
 MP3_SUFFIX = ".mp3"
-
-STATUS_PENDING = "pending"
-STATUS_COMPLETE = "complete"
-STATUS_FAILED = "failed"
-
 
 # ---------------------------------------------------------------------------
 # Keys and lookups
@@ -44,7 +44,7 @@ def find_run(campaign: Campaign, content_hash: str) -> AdRun | None:
 
 def find_delivered_run(campaign: Campaign, content_hash: str) -> AdRun | None:
     run = find_run(campaign, content_hash)
-    if run and run.delivered_at is not None and not run.delivery_error:
+    if run and run.delivered_at is not None:
         return run
     return None
 
@@ -53,24 +53,39 @@ def active_run_id(campaign: Campaign) -> int | None:
     """The run whose creative DAC believes is live.
 
     Frequency has no "which creative is live" endpoint, so this is DAC's own
-    record: the most recent run delivered without error.
+    record: the most recent run whose latest Frequency attempt succeeded.
+    Joined against delivery_attempts, which replaced the old delivered_at
+    column — a run can now have several attempts, and only the last counts.
     """
-    run = (
+    latest = (
         campaign.ad_runs
-        .filter(AdRun.delivered_at.isnot(None), AdRun.delivery_error.is_(None))
-        .order_by(AdRun.delivered_at.desc())
+        .join(AdRun.delivery_attempts)
+        .filter(
+            DeliveryAttempt.target == TARGET_FREQUENCY,
+            DeliveryAttempt.succeeded.is_(True),
+        )
+        .order_by(DeliveryAttempt.attempted_at.desc())
         .first()
     )
-    return run.id if run else None
+    # A later failed attempt supersedes an earlier success.
+    return latest.id if latest and latest.delivered_at else None
 
 
 def is_deliverable(campaign: Campaign) -> bool:
-    advertiser = campaign.advertiser
-    return bool(
-        campaign.frequency_app_id
-        and advertiser.frequency_client
-        and advertiser.frequency_token
-    )
+    """Whether Frequency could take this campaign's creative.
+
+    Delegates to the Frequency target so there is one definition of this. It
+    used to be answered three different ways — here, by inline guards in
+    runner.py that skipped the advertiser credentials, and again inside
+    frequency.deliver_ad, which re-checked everything and raised.
+
+    Ignores delivery_enabled: that is a pause switch, not a configuration
+    problem, and the drop app greys these out for "cannot receive".
+    """
+    from app.delivery.targets import FrequencyTarget
+
+    reason = FrequencyTarget().unconfigured_reason(campaign)
+    return reason is None or "delivery_enabled" in reason
 
 
 # ---------------------------------------------------------------------------
@@ -130,8 +145,8 @@ def requeue_failed_run(run: AdRun) -> None:
     if run.status != STATUS_FAILED:
         return
     run.status = STATUS_PENDING
-    run.delivery_error = None
     run.error_message = None
     run.completed_at = None
+    # The failed attempt stays on the record — the retry appends a new one.
     db.session.commit()
     logger.info("Pushed run #%d re-queued for delivery", run.id)

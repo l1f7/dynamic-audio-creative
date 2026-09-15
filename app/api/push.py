@@ -106,7 +106,14 @@ def _campaign_json(campaign: Campaign) -> dict:
 
 
 def _run_status_json(run: AdRun) -> dict:
-    return {"run_id": run.id, "status": run.status, "delivery_error": run.delivery_error}
+    # Only a finished run has a delivery verdict. A re-queued one keeps its
+    # previous failed attempt as history, but nothing is wrong with it *now*,
+    # and the daemon would otherwise show a stale error beside a live retry.
+    return {
+        "run_id": run.id,
+        "status": run.status,
+        "delivery_error": run.delivery_error if run.is_terminal else None,
+    }
 
 
 def _history_json(run: AdRun, active_id: int | None) -> dict:
@@ -239,7 +246,7 @@ def campaign_runs(campaign_id):
 @require_advertiser_key
 def revert(campaign_id):
     """Re-deliver a previous run's stored audio. The run keeps its id."""
-    from app.delivery.frequency import is_delivery_available
+    from app.delivery.targets import FrequencyTarget
     from app.pipeline.runner import redeliver
 
     campaign = _visible_campaign(campaign_id)
@@ -250,9 +257,12 @@ def revert(campaign_id):
         abort(HTTP_CONFLICT, "Run was never delivered")
     if not campaign.delivery_enabled:
         abort(HTTP_CONFLICT, "Campaign is paused")
-    if not service.is_deliverable(campaign):
-        abort(HTTP_CONFLICT, "Campaign is missing Frequency credentials")
-    if not is_delivery_available():
+
+    target = FrequencyTarget()
+    unconfigured = target.unconfigured_reason(campaign)
+    if unconfigured:
+        abort(HTTP_CONFLICT, unconfigured)
+    if target.unavailable_reason():
         abort(HTTP_UNAVAILABLE, "Frequency delivery is not enabled on this server")
 
     redeliver(source.id, deliver_frequency=True)
