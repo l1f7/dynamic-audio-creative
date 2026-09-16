@@ -51,8 +51,8 @@ def create_app(config_name=None):
 
     @app.cli.command("run-due-campaigns")
     def run_due_campaigns_cmd():
-        """Run all campaigns whose cron schedule is due."""
-        from app.jobs.scheduler import run_due_campaigns
-        run_due_campaigns()
+        """Cron entry point: run due campaigns, then deliver pending pushed files."""
+        from app.jobs.scheduler import tick
+        tick()
 
     return app

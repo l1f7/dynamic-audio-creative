@@ -3,7 +3,7 @@
 import pytest
 
 from app.extensions import db as _db
-from app.jobs.scheduler import deliver_pending_pushes
+from app.jobs.scheduler import deliver_pending_pushes, tick
 from app.models import AdRun, Advertiser, Campaign
 
 HASH = "f" * 64
@@ -90,6 +90,30 @@ class TestDeliverPendingPushes:
         run = _pushed_run(campaign)
         assert deliver_pending_pushes() == 0
         assert run.status == "pending"
+
+
+class TestTick:
+    def test_cron_tick_runs_due_campaigns_then_delivers_pushes(self, campaign, delivery, monkeypatch):
+        order = []
+        monkeypatch.setattr("app.jobs.scheduler.run_due_campaigns", lambda: order.append("generate"))
+        _pushed_run(campaign)
+        assert tick() == 1
+        assert order == ["generate"]
+        assert delivery == [AdRun.query.one().id]
+
+    def test_generation_failure_does_not_block_delivery(self, campaign, delivery, monkeypatch):
+        def boom():
+            raise RuntimeError("feed down")
+        monkeypatch.setattr("app.jobs.scheduler.run_due_campaigns", boom)
+        _pushed_run(campaign)
+        assert tick() == 1
+
+    def test_cli_command_calls_tick(self, app, monkeypatch):
+        called = []
+        monkeypatch.setattr("app.jobs.scheduler.tick", lambda: called.append(True) or 0)
+        result = app.test_cli_runner().invoke(args=["run-due-campaigns"])
+        assert result.exit_code == 0, result.output
+        assert called == [True]
 
 
 class TestTickEndpoint:

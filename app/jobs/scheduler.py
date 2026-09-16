@@ -1,7 +1,7 @@
 """Cron scheduler — fires due pipelines and delivers pushed files.
 
 Both entry points are plain functions so a queue worker could call them
-unchanged if one is ever added.
+unchanged if one is ever added. The Render cron runs `tick`, which does both.
 """
 
 import logging
@@ -25,6 +25,18 @@ from app.pipeline.runner import run_pipeline
 
 logger = logging.getLogger(__name__)
 
+
+def tick() -> int:
+    """One cron beat: generate what is due, then deliver what was pushed.
+
+    A failure in generation must not stop delivery, so each half is guarded.
+    Returns the number of pushed runs attempted.
+    """
+    try:
+        run_due_campaigns()
+    except Exception:
+        logger.exception("run_due_campaigns failed")
+    return deliver_pending_pushes()
 
 
 def run_due_campaigns():

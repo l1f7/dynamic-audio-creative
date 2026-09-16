@@ -109,8 +109,10 @@ Endpoints live under `/api/v1` and take the key in `X-API-Key`:
 | `POST /campaigns/{id}/revert` | Re-deliver a previous run's stored audio |
 | `POST /campaigns/{id}/pause` | Soft pause: flips `delivery_enabled` |
 
-Pushed runs are delivered by `POST /api/v1/scheduler/tick` (global `API_KEY`,
-called by Render cron), so schedule that every minute. Pushed files are probed
+Pushed runs are delivered on the same cron beat as generated ones: the
+`flask run-due-campaigns` cron job calls `scheduler.tick`, which runs due
+campaigns and then delivers pending pushes. `POST /api/v1/scheduler/tick`
+(global `API_KEY`) does the delivery half on demand. Pushed files are probed
 with `ffprobe` and compared with the `creative_duration` in the advertiser's
 Frequency token; a mismatch beyond ±1 s, or an unreadable file, is rejected with
 a plain-text `422`. Non-MP3 audio is transcoded to MP3 before delivery.
