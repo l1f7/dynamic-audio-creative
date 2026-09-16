@@ -30,8 +30,10 @@ campaign that is not active.
    "delivery_enabled": true, "deliverable": true }]
 ```
 `deliverable` is `false` when the campaign is missing `frequency_app_id`, or its
-advertiser is missing `frequency_client` / `frequency_token`. The desktop picker
-greys these out, so a folder is never assigned to a target that cannot receive.
+advertiser is missing `frequency_client` / `frequency_token`. It ignores
+`delivery_enabled`: a paused campaign with credentials is `deliverable`, and a
+paused campaign without them is not. The desktop picker greys these out, so a
+folder is never assigned to a target that cannot receive.
 
 ### `POST /campaigns/{id}/uploads`
 Request somewhere to put the bytes.
@@ -71,6 +73,10 @@ Register the uploaded object.
 unsupported format. The daemon treats 422 as **permanent** and dead-letters
 immediately rather than retrying. Put a human-readable reason in the body; it is
 shown verbatim next to the file in the UI.
+
+`400` when the object at `upload_key` does not exist — the daemon skipped or
+botched the PUT. `503` when object storage itself errors while DAC fetches the
+object; the daemon retries that like any other 5xx.
 
 ### `GET /runs/{run_id}`
 ```json

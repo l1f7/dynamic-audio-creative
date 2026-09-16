@@ -38,6 +38,10 @@ class DeliveryTarget:
         """Why this campaign cannot use this target, or None if it can."""
         raise NotImplementedError
 
+    def missing_credentials_reason(self, campaign) -> str | None:
+        """Why this target could never reach this campaign, ignoring pause switches."""
+        raise NotImplementedError
+
     def unavailable_reason(self) -> str | None:
         """Why this server is off for the whole deployment, or None."""
         raise NotImplementedError
@@ -61,6 +65,9 @@ class FrequencyTarget(DeliveryTarget):
     def unconfigured_reason(self, campaign):
         if not campaign.delivery_enabled:
             return "delivery_enabled is off for this campaign"
+        return self.missing_credentials_reason(campaign)
+
+    def missing_credentials_reason(self, campaign):
         if not campaign.frequency_app_id:
             return "campaign has no frequency_app_id"
         advertiser = campaign.advertiser
@@ -99,6 +106,9 @@ class DV360Target(DeliveryTarget):
     def unconfigured_reason(self, campaign):
         if not campaign.dv360_enabled:
             return "dv360_enabled is off for this campaign"
+        return self.missing_credentials_reason(campaign)
+
+    def missing_credentials_reason(self, campaign):
         if not campaign.dv360_line_item_id:
             return "campaign has no dv360_line_item_id"
         advertiser = campaign.advertiser

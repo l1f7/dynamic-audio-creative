@@ -74,18 +74,13 @@ def active_run_id(campaign: Campaign) -> int | None:
 def is_deliverable(campaign: Campaign) -> bool:
     """Whether Frequency could take this campaign's creative.
 
-    Delegates to the Frequency target so there is one definition of this. It
-    used to be answered three different ways — here, by inline guards in
-    runner.py that skipped the advertiser credentials, and again inside
-    frequency.deliver_ad, which re-checked everything and raised.
-
-    Ignores delivery_enabled: that is a pause switch, not a configuration
-    problem, and the drop app greys these out for "cannot receive".
+    Asks the Frequency target so there is one definition of this. Ignores
+    delivery_enabled: that is a pause switch, not a configuration problem, and
+    the drop app greys these out for "cannot receive".
     """
     from app.delivery.targets import FrequencyTarget
 
-    reason = FrequencyTarget().unconfigured_reason(campaign)
-    return reason is None or "delivery_enabled" in reason
+    return FrequencyTarget().missing_credentials_reason(campaign) is None
 
 
 # ---------------------------------------------------------------------------

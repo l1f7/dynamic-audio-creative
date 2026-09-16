@@ -139,6 +139,19 @@ class TestCampaigns:
         db.session.commit()
         assert client.get("/api/v1/campaigns", headers=headers).get_json()[0]["deliverable"] is False
 
+    def test_paused_campaign_missing_credentials_is_not_deliverable(self, client, db, campaign, headers):
+        campaign.delivery_enabled = False
+        campaign.frequency_app_id = None
+        db.session.commit()
+        listed = client.get("/api/v1/campaigns", headers=headers).get_json()[0]
+        assert listed["delivery_enabled"] is False
+        assert listed["deliverable"] is False
+
+    def test_paused_campaign_with_credentials_is_deliverable(self, client, db, campaign, headers):
+        campaign.delivery_enabled = False
+        db.session.commit()
+        assert client.get("/api/v1/campaigns", headers=headers).get_json()[0]["deliverable"] is True
+
     def test_bad_key_is_401(self, client, campaign):
         assert client.get("/api/v1/campaigns", headers={"X-API-Key": "dac_bad"}).status_code == 401
 
@@ -229,6 +242,13 @@ class TestPush:
             raise ClientError({"Error": {"Code": "NoSuchKey", "Message": "gone"}}, "GetObject")
         monkeypatch.setattr(service.s3, "download", missing)
         assert _push(client, headers, campaign.id).status_code == 400
+        assert AdRun.query.count() == 0
+
+    def test_storage_outage_is_retryable(self, client, campaign, headers, fake_storage, monkeypatch):
+        def down(key):
+            raise ClientError({"Error": {"Code": "ServiceUnavailable", "Message": "busy"}}, "GetObject")
+        monkeypatch.setattr(service.s3, "download", down)
+        assert _push(client, headers, campaign.id).status_code == 503
         assert AdRun.query.count() == 0
 
     def test_foreign_upload_key_is_400(self, client, campaign, headers, fake_storage):

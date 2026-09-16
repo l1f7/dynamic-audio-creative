@@ -21,6 +21,8 @@ from app.push.audio import PushRejected
 from app.storage import s3
 
 CONTENT_HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+# S3 error codes meaning the object is genuinely absent, not that storage is down
+MISSING_OBJECT_CODES = {"NoSuchKey", "404", "NotFound"}
 ISO_UTC_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 HTTP_CONFLICT = 409
 HTTP_UNPROCESSABLE = 422
@@ -75,6 +77,18 @@ def _valid_hash(body: dict) -> str:
     if not CONTENT_HASH_PATTERN.match(content_hash):
         abort(400, "'content_hash' must be 64 lowercase hex characters")
     return content_hash
+
+
+def _storage_error_code(exc: ClientError) -> str:
+    return exc.response.get("Error", {}).get("Code", "")
+
+
+def _abort_for_storage_error(exc: ClientError):
+    """A missing object is the daemon's mistake (400). Anything else is
+    storage misbehaving, which the daemon must retry (503)."""
+    if _storage_error_code(exc) in MISSING_OBJECT_CODES:
+        abort(400, f"Uploaded object not found: {exc}")
+    abort(HTTP_UNAVAILABLE, f"Object storage error: {exc}")
 
 
 def _rejected(reason: str) -> Response:
@@ -200,7 +214,7 @@ def push(campaign_id):
     except PushRejected as exc:
         return _rejected(str(exc))
     except ClientError as exc:
-        abort(400, f"Uploaded object not found: {exc}")
+        _abort_for_storage_error(exc)
 
     run = service.register_pushed_run(campaign, prepared, content_hash, filename)
     return jsonify({"run_id": run.id})

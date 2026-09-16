@@ -60,7 +60,7 @@ class TestTargetsAgreeOnTheInterface:
         for target in all_targets():
             assert target.name
             assert target.errors
-            for method in ("unconfigured_reason", "unavailable_reason", "deliver"):
+            for method in ("unconfigured_reason", "missing_credentials_reason", "unavailable_reason", "deliver"):
                 assert callable(getattr(target, method))
 
     def test_names_are_unique(self):
@@ -94,6 +94,13 @@ class TestConfigurationReasons:
         campaign = _campaign(db, advertiser)
         assert FrequencyTarget().unconfigured_reason(campaign) is None
         assert DV360Target().unconfigured_reason(campaign) is None
+
+    def test_missing_credentials_ignores_the_pause_switch(self, db, advertiser):
+        """A paused campaign with no app id is misconfigured, not merely paused."""
+        paused_broken = _campaign(db, advertiser, delivery_enabled=False, frequency_app_id=None)
+        assert "frequency_app_id" in FrequencyTarget().missing_credentials_reason(paused_broken)
+        paused_fine = _campaign(db, advertiser, delivery_enabled=False)
+        assert FrequencyTarget().missing_credentials_reason(paused_fine) is None
 
 
 class TestFanOut:
