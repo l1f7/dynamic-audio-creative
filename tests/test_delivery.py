@@ -41,8 +41,10 @@ class TestFrequencyConfigGuards:
         """Without an app context, availability check fails closed."""
         assert is_delivery_available() is False
 
-    def test_delivery_not_available_when_unconfigured(self, app):
+    def test_delivery_not_available_when_unconfigured(self, app, monkeypatch):
         """FREQUENCY_ENABLED / CMPAPI_BASE_URL unset means unavailable."""
+        monkeypatch.setitem(app.config, "FREQUENCY_ENABLED", False)
+        monkeypatch.setitem(app.config, "CMPAPI_BASE_URL", None)
         with app.app_context():
             assert is_delivery_available() is False
 
@@ -62,6 +64,17 @@ class TestFrequencyConfigGuards:
 
         with pytest.raises(FrequencyNotConfiguredError):
             deliver_ad(run, b"fake-mp3-bytes")
+
+    def test_deliver_raises_without_campaign_token(self, client, db, app):
+        """deliver_ad refuses to run when the campaign has no Frequency token."""
+        run = _make_ad_run(db, frequency_app_id="12345", frequency_token=None)
+        run.campaign.advertiser.frequency_client = "acme"
+        app.config["CMPAPI_BASE_URL"] = "https://cmpapi.example.com"
+        try:
+            with pytest.raises(FrequencyNotConfiguredError, match="no Frequency token"):
+                deliver_ad(run, b"fake-mp3-bytes")
+        finally:
+            app.config.pop("CMPAPI_BASE_URL")
 
     def test_deliver_raises_without_app_id(self, client, db, app):
         """deliver_ad refuses to run when the campaign has no Frequency app ID."""

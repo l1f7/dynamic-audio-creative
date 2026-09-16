@@ -70,9 +70,11 @@ class FrequencyTarget(DeliveryTarget):
     def missing_credentials_reason(self, campaign):
         if not campaign.frequency_app_id:
             return "campaign has no frequency_app_id"
+        if not campaign.frequency_token:
+            return "campaign has no frequency_token"
         advertiser = campaign.advertiser
-        if not advertiser.frequency_client or not advertiser.frequency_token:
-            return f"advertiser '{advertiser.name}' has no Frequency credentials"
+        if not advertiser.frequency_client:
+            return f"advertiser '{advertiser.name}' has no Frequency client"
         return None
 
     def unavailable_reason(self):

@@ -91,6 +91,8 @@ class Campaign(db.Model):
     delivery_enabled = db.Column(db.Boolean, default=False)
     delivery_config = db.Column(db.JSON, nullable=True)
     frequency_app_id = db.Column(db.String(100), nullable=True)
+    # A Frequency token identifies one ad unit, so each campaign carries its own.
+    frequency_token = db.Column(db.Text, nullable=True)
     # NOT NULL in the database since d4e5f6a7b8c9 — keep the model saying so,
     # or SQLite-backed tests accept a None that Postgres rejects in production.
     dv360_enabled = db.Column(

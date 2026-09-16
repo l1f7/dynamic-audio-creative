@@ -21,7 +21,7 @@ from app.models.delivery_attempt import TARGET_DV360, TARGET_FREQUENCY
 def advertiser(db):
     adv = Advertiser(
         name="Acme",
-        frequency_client="acme", frequency_token="tok",
+        frequency_client="acme",
         dv360_advertiser_id="dv-1", dv360_service_account_json="{}",
     )
     db.session.add(adv)
@@ -32,7 +32,7 @@ def advertiser(db):
 def _campaign(db, advertiser, **overrides):
     fields = dict(
         name="Spring", advertiser_id=advertiser.id, feed_type="weather",
-        delivery_enabled=True, frequency_app_id="app-1",
+        delivery_enabled=True, frequency_app_id="app-1", frequency_token="tok",
         dv360_enabled=True, dv360_line_item_id="li-1",
     )
     fields.update(overrides)
@@ -79,12 +79,16 @@ class TestConfigurationReasons:
         campaign = _campaign(db, advertiser, frequency_app_id=None)
         assert "frequency_app_id" in FrequencyTarget().unconfigured_reason(campaign)
 
-    def test_frequency_needs_advertiser_credentials(self, db, advertiser):
+    def test_frequency_needs_a_campaign_token(self, db, advertiser):
+        campaign = _campaign(db, advertiser, frequency_token=None)
+        assert "frequency_token" in FrequencyTarget().unconfigured_reason(campaign)
+
+    def test_frequency_needs_advertiser_client(self, db, advertiser):
         """runner.py used to skip this check and only fail inside deliver_ad."""
-        advertiser.frequency_token = None
+        advertiser.frequency_client = None
         db.session.commit()
         campaign = _campaign(db, advertiser)
-        assert "Frequency credentials" in FrequencyTarget().unconfigured_reason(campaign)
+        assert "Frequency client" in FrequencyTarget().unconfigured_reason(campaign)
 
     def test_dv360_needs_its_line_item(self, db, advertiser):
         campaign = _campaign(db, advertiser, dv360_line_item_id=None)

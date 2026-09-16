@@ -69,7 +69,7 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
 
     advertiser = ad_run.campaign.advertiser
     client = advertiser.frequency_client
-    token = advertiser.frequency_token
+    token = ad_run.campaign.frequency_token
 
     logger.info(
         "[Frequency] advertiser=%s  client=%s  token=%s",
@@ -78,9 +78,13 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
         "***" if token else None,
     )
 
-    if not client or not token:
+    if not client:
         raise FrequencyNotConfiguredError(
-            f"Advertiser '{advertiser.name}' has no Frequency client/token configured."
+            f"Advertiser '{advertiser.name}' has no Frequency client configured."
+        )
+    if not token:
+        raise FrequencyNotConfiguredError(
+            f"Campaign '{ad_run.campaign.name}' has no Frequency token configured."
         )
 
     # --- Step 1: Validate ---

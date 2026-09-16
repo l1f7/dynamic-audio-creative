@@ -102,7 +102,7 @@ def prepare_pushed_audio(campaign: Campaign, upload_key: str, filename: str) -> 
     """
     raw = s3.download(upload_key)
     probed = audio.probe(raw, filename)
-    expected = frequency_token.creative_duration(campaign.advertiser.frequency_token)
+    expected = frequency_token.creative_duration(campaign.frequency_token)
     audio.check_duration(probed, expected)
     if probed.is_mp3:
         return PreparedAudio(upload_key, len(raw))

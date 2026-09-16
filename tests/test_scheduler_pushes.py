@@ -11,12 +11,12 @@ HASH = "f" * 64
 
 @pytest.fixture
 def campaign(db):
-    adv = Advertiser(name="Acme", frequency_client="acme", frequency_token="tok")
+    adv = Advertiser(name="Acme", frequency_client="acme")
     _db.session.add(adv)
     _db.session.commit()
     camp = Campaign(name="Spring", advertiser_id=adv.id, feed_type="push",
                     campaign_type="push",
-                    frequency_app_id="app-1", delivery_enabled=True)
+                    frequency_app_id="app-1", frequency_token="tok", delivery_enabled=True)
     _db.session.add(camp)
     _db.session.commit()
     return camp

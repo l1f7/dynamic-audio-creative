@@ -21,7 +21,7 @@ TOKEN_NO_DURATION = make_token({"campaign_name": "Spring"})
 
 @pytest.fixture
 def advertiser(db):
-    adv = Advertiser(name="Acme Motors", frequency_client="acme", frequency_token=TOKEN)
+    adv = Advertiser(name="Acme Motors", frequency_client="acme")
     db.session.add(adv)
     db.session.commit()
     return adv
@@ -30,7 +30,8 @@ def advertiser(db):
 @pytest.fixture
 def campaign(db, advertiser):
     camp = Campaign(name="Spring Sale", advertiser_id=advertiser.id, feed_type="push",
-                    campaign_type="push", frequency_app_id="app-1", delivery_enabled=True)
+                    campaign_type="push", frequency_app_id="app-1", frequency_token=TOKEN,
+                    delivery_enabled=True)
     db.session.add(camp)
     db.session.commit()
     return camp
@@ -134,7 +135,7 @@ class TestCampaigns:
 
     @pytest.mark.parametrize("missing", ["frequency_app_id", "frequency_client", "frequency_token"])
     def test_not_deliverable_when_credential_missing(self, client, db, advertiser, campaign, headers, missing):
-        target = campaign if missing == "frequency_app_id" else advertiser
+        target = advertiser if missing == "frequency_client" else campaign
         setattr(target, missing, None)
         db.session.commit()
         assert client.get("/api/v1/campaigns", headers=headers).get_json()[0]["deliverable"] is False
@@ -281,7 +282,7 @@ class TestAudioValidation:
         assert AdRun.query.count() == 0
 
     def test_token_without_duration_skips_check(self, client, db, advertiser, campaign, headers, fake_storage, monkeypatch):
-        advertiser.frequency_token = TOKEN_NO_DURATION
+        campaign.frequency_token = TOKEN_NO_DURATION
         db.session.commit()
         monkeypatch.setattr(audio, "probe", lambda raw, name: audio.ProbedAudio("mp3", 15.0))
         assert _push(client, headers, campaign.id).status_code == 200

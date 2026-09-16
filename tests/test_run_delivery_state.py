@@ -160,13 +160,13 @@ class TestPipelineEndToEnd:
         monkeypatch.setattr(runner_module, "_save_outputs", lambda *a, **kw: None)
 
     def _deliverable_campaign(self, db):
-        adv = Advertiser(name="Acme", frequency_client="acme", frequency_token="tok")
+        adv = Advertiser(name="Acme", frequency_client="acme")
         db.session.add(adv)
         db.session.commit()
         camp = Campaign(
             name="Spring", advertiser_id=adv.id, feed_type="world_cup",
             fallback_script="A static script.",
-            delivery_enabled=True, frequency_app_id="app-1",
+            delivery_enabled=True, frequency_app_id="app-1", frequency_token="tok",
         )
         db.session.add(camp)
         db.session.commit()

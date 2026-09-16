@@ -280,7 +280,7 @@ def advertiser_list():
 @login_required
 def advertiser_new():
     form = AdvertiserForm()
-    if form.validate_on_submit() and _frequency_token_is_sound(form):
+    if form.validate_on_submit():
         adv = Advertiser(
             name=form.name.data,
             description=form.description.data or None,
@@ -288,7 +288,6 @@ def advertiser_new():
             website=form.website.data or None,
             is_active=form.is_active.data,
             frequency_client=form.frequency_client.data or None,
-            frequency_token=form.frequency_token.data or None,
             dv360_advertiser_id=form.dv360_advertiser_id.data or None,
             dv360_service_account_json=_minify_json(form.dv360_service_account_json.data),
         )
@@ -306,7 +305,7 @@ def advertiser_edit(adv_id):
     adv = Advertiser.query.get_or_404(adv_id)
     form = AdvertiserForm(obj=adv)
 
-    if form.validate_on_submit() and _frequency_token_is_sound(form):
+    if form.validate_on_submit():
         form.populate_obj(adv)
         adv.dv360_service_account_json = _minify_json(adv.dv360_service_account_json)
         db.session.commit()
@@ -318,7 +317,6 @@ def advertiser_edit(adv_id):
         form=form,
         editing=True,
         advertiser=adv,
-        token_summary=_token_summary(adv.frequency_token),
     )
 
 
@@ -333,8 +331,14 @@ def _frequency_token_is_sound(form) -> bool:
         form.frequency_token.errors.append(str(exc))
         return False
     flash("Frequency token points at: " + _describe_payload(payload), "info")
-    _report_frequency_validation(form.frequency_client.data, token)
+    _report_frequency_validation(_frequency_client_for(form), token)
     return True
+
+
+def _frequency_client_for(form) -> str | None:
+    """The validate call needs the advertiser's client name alongside the campaign's token."""
+    advertiser = Advertiser.query.get(form.advertiser_id.data)
+    return advertiser.frequency_client if advertiser else None
 
 
 def _describe_payload(payload: dict) -> str:
@@ -436,7 +440,7 @@ def campaign_new():
         (a.id, a.name) for a in Advertiser.query.order_by(Advertiser.name).all()
     ]
 
-    if form.validate_on_submit():
+    if form.validate_on_submit() and _frequency_token_is_sound(form):
         campaign = Campaign(
             name=form.name.data,
             advertiser_id=form.advertiser_id.data,
@@ -459,6 +463,7 @@ def campaign_new():
             target_words=form.target_words.data,
             cron_schedule=form.cron_schedule.data or None,
             frequency_app_id=form.frequency_app_id.data or None,
+            frequency_token=(form.frequency_token.data or "").strip() or None,
             dv360_enabled=form.dv360_enabled.data,
             dv360_line_item_id=form.dv360_line_item_id.data or None,
         )
@@ -754,7 +759,7 @@ def campaign_edit(campaign_id):
         form.feed_filter_key.data = feed_config.get("filter_key", "")
         form.feed_filter_contains.data = feed_config.get("filter_contains", "")
 
-    if form.validate_on_submit():
+    if form.validate_on_submit() and _frequency_token_is_sound(form):
         # Preserve music bed fields — populate_obj would overwrite them
         saved_s3_key = campaign.music_bed_s3_key
         saved_filename = campaign.music_bed_filename
@@ -779,6 +784,7 @@ def campaign_edit(campaign_id):
             campaign.fallback_script = None
         if not campaign.cron_schedule:
             campaign.cron_schedule = None
+        campaign.frequency_token = (campaign.frequency_token or "").strip() or None
         _normalize_push_campaign(campaign)
 
         db.session.commit()
@@ -801,6 +807,7 @@ def campaign_edit(campaign_id):
         editing=True,
         campaign=campaign,
         feed_type_suggestions=_get_feed_type_suggestions(),
+        token_summary=_token_summary(campaign.frequency_token),
     )
 
 

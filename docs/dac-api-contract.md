@@ -29,8 +29,8 @@ campaign that is not active.
 [{ "id": 41, "name": "Spring Sale", "advertiser_name": "Acme Motors",
    "delivery_enabled": true, "deliverable": true }]
 ```
-`deliverable` is `false` when the campaign is missing `frequency_app_id`, or its
-advertiser is missing `frequency_client` / `frequency_token`. It ignores
+`deliverable` is `false` when the campaign is missing `frequency_app_id` or
+`frequency_token`, or its advertiser is missing `frequency_client`. It ignores
 `delivery_enabled`: a paused campaign with credentials is `deliverable`, and a
 paused campaign without them is not. The desktop picker greys these out, so a
 folder is never assigned to a target that cannot receive.
