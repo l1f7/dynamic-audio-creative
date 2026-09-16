@@ -1,28 +1,31 @@
-"""Move delivery credentials from advertisers to campaigns
+"""Move DV360 credentials from advertisers to campaigns
 
-An advertiser is a container for campaigns. A Frequency token identifies a
-single ad unit and a DV360 service account is scoped to one advertiser
-account inside DV360, so both belong to the campaign that delivers through
-them. Each existing campaign inherits its advertiser's values so nothing
-stops delivering. Only the Frequency client name stays on the advertiser.
+An advertiser is a container for campaigns. A DV360 service account is scoped
+to one advertiser account inside DV360, so it belongs to the campaign that
+delivers through it, beside the line item. Each existing campaign inherits its
+advertiser's values so nothing stops delivering.
 
-Revision ID: b5c6d7e8f9a0
-Revises: a4b5c6d7e8f9
-Create Date: 2026-09-16 00:00:00.000000
+This is a separate revision from b5c6d7e8f9a0 (the Frequency token move)
+because that one had already run in production before the DV360 move was
+written. Alembic never re-runs an applied revision, so extending it in place
+left production without these columns.
+
+Revision ID: c6d7e8f9a0b1
+Revises: b5c6d7e8f9a0
+Create Date: 2026-09-16 23:30:00.000000
 
 """
 from alembic import op
 import sqlalchemy as sa
 
 
-revision = 'b5c6d7e8f9a0'
-down_revision = 'a4b5c6d7e8f9'
+revision = 'c6d7e8f9a0b1'
+down_revision = 'b5c6d7e8f9a0'
 branch_labels = None
 depends_on = None
 
 
 MOVED_COLUMNS = (
-    ('frequency_token', sa.Text()),
     ('dv360_advertiser_id', sa.String(length=100)),
     ('dv360_service_account_json', sa.Text()),
 )
