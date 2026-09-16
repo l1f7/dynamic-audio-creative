@@ -62,24 +62,24 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
 
     Returns the created creative resource name (e.g. advertisers/123/creatives/456).
     """
-    advertiser = ad_run.campaign.advertiser
+    campaign = ad_run.campaign
 
-    dv360_advertiser_id = advertiser.dv360_advertiser_id
+    dv360_advertiser_id = campaign.dv360_advertiser_id
     if not dv360_advertiser_id:
         raise DV360NotConfiguredError(
-            f"Advertiser '{advertiser.name}' has no DV360 advertiser ID configured."
+            f"Campaign '{campaign.name}' has no DV360 advertiser ID configured."
         )
 
-    service_account_json = advertiser.dv360_service_account_json
+    service_account_json = campaign.dv360_service_account_json
     if not service_account_json:
         raise DV360NotConfiguredError(
-            f"Advertiser '{advertiser.name}' has no DV360 service account configured."
+            f"Campaign '{campaign.name}' has no DV360 service account configured."
         )
 
-    line_item_id = ad_run.campaign.dv360_line_item_id
+    line_item_id = campaign.dv360_line_item_id
     if not line_item_id:
         raise DV360NotConfiguredError(
-            f"Campaign '{ad_run.campaign.name}' has no DV360 line item ID configured."
+            f"Campaign '{campaign.name}' has no DV360 line item ID configured."
         )
 
     logger.info("[DV360] Starting delivery for ad_run #%s", ad_run.id)

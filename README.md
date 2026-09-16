@@ -113,7 +113,7 @@ Pushed runs are delivered on the same cron beat as generated ones: the
 `flask run-due-campaigns` cron job calls `scheduler.tick`, which runs due
 campaigns and then delivers pending pushes. `POST /api/v1/scheduler/tick`
 (global `API_KEY`) does the delivery half on demand. Pushed files are probed
-with `ffprobe` and compared with the `creative_duration` in the advertiser's
+with `ffprobe` and compared with the `creative_duration` in the campaign's
 Frequency token; a mismatch beyond ±1 s, or an unreadable file, is rejected with
 a plain-text `422`. Non-MP3 audio is transcoded to MP3 before delivery.
 

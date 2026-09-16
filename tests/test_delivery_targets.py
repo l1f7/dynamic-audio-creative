@@ -22,7 +22,6 @@ def advertiser(db):
     adv = Advertiser(
         name="Acme",
         frequency_client="acme",
-        dv360_advertiser_id="dv-1", dv360_service_account_json="{}",
     )
     db.session.add(adv)
     db.session.commit()
@@ -34,6 +33,7 @@ def _campaign(db, advertiser, **overrides):
         name="Spring", advertiser_id=advertiser.id, feed_type="weather",
         delivery_enabled=True, frequency_app_id="app-1", frequency_token="tok",
         dv360_enabled=True, dv360_line_item_id="li-1",
+        dv360_advertiser_id="dv-1", dv360_service_account_json="{}",
     )
     fields.update(overrides)
     camp = Campaign(**fields)
@@ -93,6 +93,10 @@ class TestConfigurationReasons:
     def test_dv360_needs_its_line_item(self, db, advertiser):
         campaign = _campaign(db, advertiser, dv360_line_item_id=None)
         assert "dv360_line_item_id" in DV360Target().unconfigured_reason(campaign)
+
+    def test_dv360_needs_campaign_credentials(self, db, advertiser):
+        campaign = _campaign(db, advertiser, dv360_service_account_json=None)
+        assert "DV360 credentials" in DV360Target().unconfigured_reason(campaign)
 
     def test_fully_configured_campaign_has_no_reason(self, db, advertiser):
         campaign = _campaign(db, advertiser)

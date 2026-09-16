@@ -113,9 +113,8 @@ class DV360Target(DeliveryTarget):
     def missing_credentials_reason(self, campaign):
         if not campaign.dv360_line_item_id:
             return "campaign has no dv360_line_item_id"
-        advertiser = campaign.advertiser
-        if not advertiser.dv360_advertiser_id or not advertiser.dv360_service_account_json:
-            return f"advertiser '{advertiser.name}' has no DV360 credentials"
+        if not campaign.dv360_advertiser_id or not campaign.dv360_service_account_json:
+            return "campaign has no DV360 credentials"
         return None
 
     def unavailable_reason(self):

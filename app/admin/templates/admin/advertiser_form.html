@@ -34,20 +34,7 @@
     <div class="mb-3">
         <label class="form-label">Frequency Client Name</label>
         {{ form.frequency_client(class="form-control", placeholder="e.g. mrglive") }}
-        <small class="text-muted">Used in the Frequency validation request. Leave blank if not using Frequency delivery. Each campaign carries its own Frequency token.</small>
-    </div>
-
-    <hr class="my-4">
-    <h5>Display &amp; Video 360 (DV360)</h5>
-    <p class="text-muted small">Each advertiser uses its own Google Cloud service account. The account must be added as a Standard or Admin user inside DV360 for the relevant advertiser.</p>
-    <div class="mb-3">
-        <label class="form-label">DV360 Advertiser ID</label>
-        {{ form.dv360_advertiser_id(class="form-control", placeholder="e.g. 1234567890") }}
-        <small class="text-muted">Numeric ID from the DV360 URL or Partner Settings.</small>
-    </div>
-    <div class="mb-3">
-        <label class="form-label">Service Account JSON</label>
-        {{ form.dv360_service_account_json(class="form-control font-monospace", rows=4, placeholder='Paste the JSON from Google Cloud Console → IAM → Service Accounts → Keys') }}
+        <small class="text-muted">Used in the Frequency validation request. Leave blank if not using Frequency delivery. Tokens and DV360 credentials are set per campaign.</small>
     </div>
 
     <button type="submit" class="btn btn-primary">{{ 'Update' if editing else 'Create' }} Advertiser</button>

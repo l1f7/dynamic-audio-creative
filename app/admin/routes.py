@@ -288,8 +288,6 @@ def advertiser_new():
             website=form.website.data or None,
             is_active=form.is_active.data,
             frequency_client=form.frequency_client.data or None,
-            dv360_advertiser_id=form.dv360_advertiser_id.data or None,
-            dv360_service_account_json=_minify_json(form.dv360_service_account_json.data),
         )
         db.session.add(adv)
         db.session.commit()
@@ -307,7 +305,6 @@ def advertiser_edit(adv_id):
 
     if form.validate_on_submit():
         form.populate_obj(adv)
-        adv.dv360_service_account_json = _minify_json(adv.dv360_service_account_json)
         db.session.commit()
         flash(f"Advertiser '{adv.name}' updated.", "success")
         return redirect(url_for("admin.advertiser_list"))
@@ -466,6 +463,8 @@ def campaign_new():
             frequency_token=(form.frequency_token.data or "").strip() or None,
             dv360_enabled=form.dv360_enabled.data,
             dv360_line_item_id=form.dv360_line_item_id.data or None,
+            dv360_advertiser_id=form.dv360_advertiser_id.data or None,
+            dv360_service_account_json=_minify_json(form.dv360_service_account_json.data),
         )
         _save_feed_filter_config(campaign, form)
         _normalize_push_campaign(campaign)
@@ -785,6 +784,8 @@ def campaign_edit(campaign_id):
         if not campaign.cron_schedule:
             campaign.cron_schedule = None
         campaign.frequency_token = (campaign.frequency_token or "").strip() or None
+        campaign.dv360_advertiser_id = campaign.dv360_advertiser_id or None
+        campaign.dv360_service_account_json = _minify_json(campaign.dv360_service_account_json)
         _normalize_push_campaign(campaign)
 
         db.session.commit()

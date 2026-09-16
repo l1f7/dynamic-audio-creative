@@ -144,7 +144,7 @@
     <div class="card-header text-success">DV360 — Delivered</div>
     <div class="card-body">
         {% set parts = run.dv360_creative_name.split('/') if run.dv360_creative_name else [] %}
-        {% set advertiser_id = run.campaign.advertiser.dv360_advertiser_id %}
+        {% set advertiser_id = run.campaign.dv360_advertiser_id %}
         {% set creative_id = parts[-1] if parts | length >= 2 else '' %}
         <p class="mb-1 text-muted">{{ run.dv360_delivered_at.strftime('%Y-%m-%d %H:%M') }}</p>
         {% if run.dv360_creative_name %}

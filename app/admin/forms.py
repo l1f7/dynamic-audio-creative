@@ -37,8 +37,6 @@ class AdvertiserForm(FlaskForm):
     website = StringField("Website", validators=[Optional()])
     is_active = BooleanField("Active", default=True)
     frequency_client = StringField("Frequency Client Name", validators=[Optional()])
-    dv360_advertiser_id = StringField("DV360 Advertiser ID", validators=[Optional()])
-    dv360_service_account_json = TextAreaField("DV360 Service Account JSON", validators=[Optional()])
 
 
 class CampaignForm(FlaskForm):
@@ -122,6 +120,8 @@ class CampaignForm(FlaskForm):
     frequency_token = StringField("Frequency Token", validators=[Optional()])
     dv360_enabled = BooleanField("Enable DV360 Delivery", default=False)
     dv360_line_item_id = StringField("DV360 Line Item ID", validators=[Optional()])
+    dv360_advertiser_id = StringField("DV360 Advertiser ID", validators=[Optional()])
+    dv360_service_account_json = TextAreaField("DV360 Service Account JSON", validators=[Optional()])
 
     @property
     def is_push(self) -> bool:

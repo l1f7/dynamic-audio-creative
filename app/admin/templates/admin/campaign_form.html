@@ -305,6 +305,16 @@
                 {{ form.dv360_line_item_id(class="form-control", placeholder="e.g. 987654321") }}
                 <small class="text-muted">Required when DV360 delivery is enabled. Each generated creative is assigned to this line item, replacing the previous one.</small>
             </div>
+            <div class="mb-3">
+                <label class="form-label">DV360 Advertiser ID</label>
+                {{ form.dv360_advertiser_id(class="form-control", placeholder="e.g. 1234567890") }}
+                <small class="text-muted">Numeric ID from the DV360 URL or Partner Settings.</small>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">DV360 Service Account JSON</label>
+                {{ form.dv360_service_account_json(class="form-control font-monospace", rows=4, placeholder='Paste the JSON from Google Cloud Console → IAM → Service Accounts → Keys') }}
+                <small class="text-muted">The account must be added as a Standard or Admin user inside DV360 for this advertiser.</small>
+            </div>
         </div>
     </div>
 

@@ -13,12 +13,8 @@ class Advertiser(db.Model):
     website = db.Column(db.String(500), nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
-    # Frequency ad server account. The token is per-campaign: see Campaign.frequency_token.
+    # The Frequency account name. Every other delivery credential is per-campaign.
     frequency_client = db.Column(db.String(100), nullable=True)
-
-    # DV360 (Display & Video 360) credentials
-    dv360_advertiser_id = db.Column(db.String(100), nullable=True)
-    dv360_service_account_json = db.Column(db.Text, nullable=True)
 
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     updated_at = db.Column(db.DateTime, onupdate=db.func.now())
