@@ -54,7 +54,7 @@ class BaseConfig:
     # CMPAPI_ENV picks staging or production; an explicit CMPAPI_BASE_URL overrides it
     CMPAPI_ENV = os.environ.get("CMPAPI_ENV", CMPAPI_ENV_PRODUCTION)
     CMPAPI_BASE_URL = os.environ.get("CMPAPI_BASE_URL") or CMPAPI_URLS.get(CMPAPI_ENV)
-    # Note: app ID is configured per-campaign via Campaign.frequency_app_id
+    # Note: app IDs/tokens are configured per-campaign via Campaign.frequency_tags
 
     # Display & Video 360 (DV360)
     DV360_ENABLED = os.environ.get("DV360_ENABLED", "false").lower() == "true"

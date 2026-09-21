@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.delivery import frequency_token
 from app.extensions import db
 from app.models import AdRun, Campaign, DeliveryAttempt
+from app.models.campaign import FREQUENCY_TAG_TOKEN_KEY
 from app.models.delivery_attempt import TARGET_FREQUENCY
 from app.models.ad_run import (
     STATUS_FAILED,
@@ -102,11 +103,19 @@ def prepare_pushed_audio(campaign: Campaign, upload_key: str, filename: str) -> 
     """
     raw = s3.download(upload_key)
     probed = audio.probe(raw, filename)
-    expected = frequency_token.creative_duration(campaign.frequency_token)
+    expected = _expected_creative_duration(campaign)
     audio.check_duration(probed, expected)
     if probed.is_mp3:
         return PreparedAudio(upload_key, len(raw))
     return PreparedAudio(_store_transcoded(upload_key, audio.transcode_to_mp3(raw, filename)), len(raw))
+
+
+def _expected_creative_duration(campaign: Campaign) -> float | None:
+    """The duration Frequency expects, read from the campaign's first tag."""
+    tags = campaign.frequency_tag_list
+    if not tags:
+        return None
+    return frequency_token.creative_duration(tags[0].get(FREQUENCY_TAG_TOKEN_KEY))
 
 
 def _store_transcoded(upload_key: str, mp3_bytes: bytes) -> str:

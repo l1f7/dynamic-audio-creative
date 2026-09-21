@@ -16,11 +16,23 @@ Adding a third ad server means writing one adapter and adding it to TARGETS.
 """
 
 import logging
+from dataclasses import dataclass
 
 from app.extensions import db
+from app.models.campaign import FREQUENCY_TAG_APP_ID_KEY, FREQUENCY_TAG_TOKEN_KEY
 from app.models.delivery_attempt import TARGET_DV360, TARGET_FREQUENCY
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DeliveryOutcome:
+    """What happened when one ad unit was handed the audio."""
+
+    succeeded: bool
+    reference: str | None = None
+    error: str | None = None
+    detail: str | None = None  # which ad unit, for targets with more than one
 
 
 class DeliveryTarget:
@@ -46,9 +58,20 @@ class DeliveryTarget:
         """Why this server is off for the whole deployment, or None."""
         raise NotImplementedError
 
-    def deliver(self, ad_run, audio_bytes: bytes) -> str:
-        """Hand over the audio. Returns the server's reference for it."""
+    def deliver(self, ad_run, audio_bytes: bytes) -> list[DeliveryOutcome]:
+        """Hand over the audio, once per ad unit this target has configured."""
         raise NotImplementedError
+
+    def _attempt(self, deliver_one, detail: str | None = None) -> DeliveryOutcome:
+        """Run one delivery call, turning any failure into an outcome rather than a raise."""
+        try:
+            reference = deliver_one()
+        except self.errors as exc:
+            return DeliveryOutcome(succeeded=False, error=str(exc), detail=detail)
+        except Exception as exc:  # noqa: BLE001 — one ad unit's surprise must not sink the others
+            logger.exception("[%s] Unexpected delivery error (%s)", self.name, detail or "")
+            return DeliveryOutcome(succeeded=False, error=str(exc), detail=detail)
+        return DeliveryOutcome(succeeded=True, reference=reference, detail=detail)
 
 
 class FrequencyTarget(DeliveryTarget):
@@ -68,10 +91,8 @@ class FrequencyTarget(DeliveryTarget):
         return self.missing_credentials_reason(campaign)
 
     def missing_credentials_reason(self, campaign):
-        if not campaign.frequency_app_id:
-            return "campaign has no frequency_app_id"
-        if not campaign.frequency_token:
-            return "campaign has no frequency_token"
+        if not campaign.frequency_tag_list:
+            return "campaign has no frequency_tags"
         advertiser = campaign.advertiser
         if not advertiser.frequency_client:
             return f"advertiser '{advertiser.name}' has no Frequency client"
@@ -92,9 +113,16 @@ class FrequencyTarget(DeliveryTarget):
         )
 
     def deliver(self, ad_run, audio_bytes):
+        return [
+            self._deliver_to_tag(ad_run, tag, audio_bytes)
+            for tag in ad_run.campaign.frequency_tag_list
+        ]
+
+    def _deliver_to_tag(self, ad_run, tag, audio_bytes) -> DeliveryOutcome:
         from app.delivery.frequency import deliver_ad
 
-        return deliver_ad(ad_run, audio_bytes)
+        detail = tag.get(FREQUENCY_TAG_APP_ID_KEY) or tag.get(FREQUENCY_TAG_TOKEN_KEY)
+        return self._attempt(lambda: deliver_ad(ad_run, tag, audio_bytes), detail=detail)
 
 
 class DV360Target(DeliveryTarget):
@@ -125,7 +153,7 @@ class DV360Target(DeliveryTarget):
     def deliver(self, ad_run, audio_bytes):
         from app.delivery.dv360 import deliver_ad
 
-        return deliver_ad(ad_run, audio_bytes)
+        return [self._attempt(lambda: deliver_ad(ad_run, audio_bytes))]
 
 
 def all_targets() -> list[DeliveryTarget]:
@@ -170,19 +198,28 @@ def deliver_run(ad_run, audio_bytes: bytes, only=None, on_first_attempt=None) ->
             announced = True
 
         try:
-            reference = target.deliver(ad_run, audio_bytes)
-        except target.errors as exc:
-            attempts.append(ad_run.record_delivery(target.name, False, error=str(exc)))
-            logger.error("[%s] Delivery FAILED for run #%d: %s", target.name, ad_run.id, exc)
+            outcomes = target.deliver(ad_run, audio_bytes)
         except Exception as exc:  # noqa: BLE001 — see the docstring
-            # An ad server throwing something we did not anticipate must still
-            # leave the run in an honest state rather than stuck in
-            # "delivering" forever, so it is recorded like any other failure.
-            attempts.append(ad_run.record_delivery(target.name, False, error=str(exc)))
-            logger.exception("[%s] Unexpected delivery error for run #%d", target.name, ad_run.id)
-        else:
-            attempts.append(ad_run.record_delivery(target.name, True, reference=reference))
-            logger.info("[%s] Delivered run #%d", target.name, ad_run.id)
-        db.session.commit()
+            # target.deliver catches its own delivery errors; reaching here
+            # means the target itself is broken, which must still leave the
+            # run in an honest state rather than stuck in "delivering" forever.
+            outcomes = [DeliveryOutcome(succeeded=False, error=str(exc))]
+            logger.exception("[%s] Target implementation error for run #%d", target.name, ad_run.id)
+
+        for outcome in outcomes:
+            attempts.append(
+                ad_run.record_delivery(
+                    target.name, outcome.succeeded,
+                    reference=outcome.reference, error=outcome.error, detail=outcome.detail,
+                )
+            )
+            if outcome.succeeded:
+                logger.info("[%s] Delivered run #%d (%s)", target.name, ad_run.id, outcome.detail or "")
+            else:
+                logger.error(
+                    "[%s] Delivery FAILED for run #%d (%s): %s",
+                    target.name, ad_run.id, outcome.detail or "", outcome.error,
+                )
+            db.session.commit()
 
     return attempts

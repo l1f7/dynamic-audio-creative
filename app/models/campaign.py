@@ -32,6 +32,10 @@ CAMPAIGN_TYPE_CHOICES = [
 # feed_type is NOT NULL but means nothing for a push campaign; store this.
 PUSH_FEED_TYPE = "push"
 
+# Keys of one entry in Campaign.frequency_tags.
+FREQUENCY_TAG_TOKEN_KEY = "token"
+FREQUENCY_TAG_APP_ID_KEY = "app_id"
+
 
 class Campaign(db.Model):
     __tablename__ = "campaigns"
@@ -90,9 +94,11 @@ class Campaign(db.Model):
     # Delivery configuration
     delivery_enabled = db.Column(db.Boolean, default=False)
     delivery_config = db.Column(db.JSON, nullable=True)
-    frequency_app_id = db.Column(db.String(100), nullable=True)
-    # A Frequency token identifies one ad unit, so each campaign carries its own.
-    frequency_token = db.Column(db.Text, nullable=True)
+    # A campaign may need to reach more than one Frequency ad unit, so this is
+    # a list of {FREQUENCY_TAG_TOKEN_KEY, FREQUENCY_TAG_APP_ID_KEY} dicts
+    # rather than a single token/app_id pair. app_id is resolved from the
+    # token against Frequency when the tag is saved.
+    frequency_tags = db.Column(db.JSON, nullable=True)
     # NOT NULL in the database since d4e5f6a7b8c9 — keep the model saying so,
     # or SQLite-backed tests accept a None that Postgres rejects in production.
     dv360_enabled = db.Column(
@@ -118,6 +124,11 @@ class Campaign(db.Model):
         lazy="dynamic",
         order_by="AdRun.created_at.desc()",
     )
+
+    @property
+    def frequency_tag_list(self) -> list[dict]:
+        """frequency_tags as a list, never None."""
+        return self.frequency_tags or []
 
     @property
     def is_push(self) -> bool:

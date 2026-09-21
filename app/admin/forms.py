@@ -116,8 +116,6 @@ class CampaignForm(FlaskForm):
 
     # Delivery
     delivery_enabled = BooleanField("Enable Frequency Delivery", default=False)
-    frequency_app_id = StringField("Frequency App ID", validators=[Optional()])
-    frequency_token = StringField("Frequency Token", validators=[Optional()])
     dv360_enabled = BooleanField("Enable DV360 Delivery", default=False)
     dv360_line_item_id = StringField("DV360 Line Item ID", validators=[Optional()])
     dv360_advertiser_id = StringField("DV360 Advertiser ID", validators=[Optional()])

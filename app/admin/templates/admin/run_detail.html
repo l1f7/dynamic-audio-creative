@@ -47,7 +47,7 @@
 {% endif %}
 
 {% if run.status == 'complete' and run.final_ad_s3_key %}
-{% set has_frequency = run.campaign.delivery_enabled and run.campaign.frequency_app_id %}
+{% set has_frequency = run.campaign.delivery_enabled and run.campaign.frequency_tags %}
 {% set has_dv360 = run.campaign.dv360_enabled and run.campaign.dv360_line_item_id %}
 {% if has_frequency or has_dv360 %}
 <div class="card mb-4">
@@ -84,7 +84,7 @@
     <div class="card-body">
         <form method="post" action="{{ url_for('admin.run_regenerate', run_id=run.id) }}">
             <textarea name="script" class="form-control mb-3" rows="8" style="font-family: monospace; line-height: 1.6;">{{ run.script_text }}</textarea>
-            {% if run.campaign.delivery_enabled and run.campaign.frequency_app_id %}
+            {% if run.campaign.delivery_enabled and run.campaign.frequency_tags %}
             <div class="form-check form-check-inline mb-3">
                 <input class="form-check-input" type="checkbox" name="deliver_frequency" id="deliver_frequency" value="1" checked>
                 <label class="form-check-label" for="deliver_frequency">Deliver to Frequency</label>
@@ -113,7 +113,7 @@
 </div>
 {% endif %}
 
-{% if run.campaign.delivery_enabled and run.campaign.frequency_app_id %}
+{% if run.campaign.delivery_enabled and run.campaign.frequency_tags %}
 {% if run.delivery_error %}
 <div class="card mb-4 border-warning">
     <div class="card-header text-warning">Frequency — Delivery Error</div>
@@ -169,13 +169,14 @@
     <div class="card-body p-0">
         <table class="table table-sm mb-0">
             <thead>
-                <tr><th>When</th><th>Ad server</th><th>Outcome</th><th>Detail</th></tr>
+                <tr><th>When</th><th>Ad server</th><th>Ad unit</th><th>Outcome</th><th>Detail</th></tr>
             </thead>
             <tbody>
                 {% for attempt in run.delivery_attempts | reverse %}
                 <tr>
                     <td class="text-muted small">{{ attempt.attempted_at.strftime('%Y-%m-%d %H:%M') }}</td>
                     <td>{{ attempt.target }}</td>
+                    <td class="small text-muted">{{ attempt.detail or '' }}</td>
                     <td>
                         {% if attempt.succeeded %}
                             <span class="badge badge-delivery-ok">Delivered</span>

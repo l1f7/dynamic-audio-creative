@@ -166,7 +166,7 @@ class TestPipelineEndToEnd:
         camp = Campaign(
             name="Spring", advertiser_id=adv.id, feed_type="world_cup",
             fallback_script="A static script.",
-            delivery_enabled=True, frequency_app_id="app-1", frequency_token="tok",
+            delivery_enabled=True, frequency_tags=[{"token": "tok", "app_id": "app-1"}],
         )
         db.session.add(camp)
         db.session.commit()
@@ -179,7 +179,7 @@ class TestPipelineEndToEnd:
         self._stub_audio(monkeypatch)
         monkeypatch.setattr("app.delivery.frequency.is_delivery_available", lambda: True)
 
-        def boom(run, data):
+        def boom(run, tag, data):
             raise FrequencyDeliveryError("ad unit rejected it")
 
         monkeypatch.setattr("app.delivery.frequency.deliver_ad", boom)
@@ -196,7 +196,7 @@ class TestPipelineEndToEnd:
 
         self._stub_audio(monkeypatch)
         monkeypatch.setattr("app.delivery.frequency.is_delivery_available", lambda: True)
-        monkeypatch.setattr("app.delivery.frequency.deliver_ad", lambda run, data: "<VAST/>")
+        monkeypatch.setattr("app.delivery.frequency.deliver_ad", lambda run, tag, data: "<VAST/>")
         campaign = self._deliverable_campaign(db)
 
         ad_run = run_pipeline(campaign.id, triggered_by="cron")
@@ -212,7 +212,7 @@ class TestPipelineEndToEnd:
         self._stub_audio(monkeypatch)
         monkeypatch.setattr("app.delivery.frequency.is_delivery_available", lambda: True)
 
-        def boom(run, data):
+        def boom(run, tag, data):
             raise FrequencyDeliveryError("ad unit rejected it")
 
         monkeypatch.setattr("app.delivery.frequency.deliver_ad", boom)

@@ -140,29 +140,31 @@ class AdRun(db.Model):
                 return attempt
         return None
 
-    def record_delivery(self, target, succeeded, reference=None, error=None):
-        """Append what one ad server did with this run.
+    def record_delivery(self, target, succeeded, reference=None, error=None, detail=None):
+        """Append what one ad server (or one ad unit within it) did with this run.
 
         The only way delivery results get written. Every caller goes through
         app.delivery.deliver_run rather than touching this directly.
         """
         attempt = DeliveryAttempt(
-            target=target, succeeded=succeeded, reference=reference, error=error
+            target=target, succeeded=succeeded, reference=reference, error=error, detail=detail
         )
         self.delivery_attempts.append(attempt)
         return attempt
 
     @property
     def attempted_targets(self):
-        """Each ad server this run tried, with whether its last attempt stuck.
+        """Each (ad server, ad unit) this run tried, with whether it stuck.
 
-        Keyed on the latest attempt per target, so a redelivery that succeeds
-        after an earlier failure reads as delivered — while both rows survive.
+        Keyed on the latest attempt per target+detail, so a redelivery that
+        succeeds after an earlier failure reads as delivered — while both rows
+        survive, and a target with several ad units (Frequency's tags) reports
+        each one rather than only its most recent attempt overall.
         """
         latest = {}
         for attempt in self.delivery_attempts:
-            latest[attempt.target] = attempt
-        return [(t, a.succeeded) for t, a in latest.items()]
+            latest[(attempt.target, attempt.detail)] = attempt
+        return [(target, a.succeeded) for (target, _detail), a in latest.items()]
 
     @property
     def delivery_state(self):

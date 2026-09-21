@@ -40,8 +40,14 @@
     <div class="col-md-3">
         <div class="card">
             <div class="card-body">
-                <h6 class="card-subtitle text-muted mb-2">Frequency App ID</h6>
-                <p class="mb-0">{{ campaign.frequency_app_id or 'Not set' }}</p>
+                <h6 class="card-subtitle text-muted mb-2">Frequency Tags</h6>
+                <p class="mb-0">
+                    {% if campaign.frequency_tags %}
+                        {% for tag in campaign.frequency_tags %}{{ tag.app_id or 'unresolved' }}{% if not loop.last %}, {% endif %}{% endfor %}
+                    {% else %}
+                        Not set
+                    {% endif %}
+                </p>
             </div>
         </div>
     </div>

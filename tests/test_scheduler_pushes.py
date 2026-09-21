@@ -16,7 +16,7 @@ def campaign(db):
     _db.session.commit()
     camp = Campaign(name="Spring", advertiser_id=adv.id, feed_type="push",
                     campaign_type="push",
-                    frequency_app_id="app-1", frequency_token="tok", delivery_enabled=True)
+                    frequency_tags=[{"token": "tok", "app_id": "app-1"}], delivery_enabled=True)
     _db.session.add(camp)
     _db.session.commit()
     return camp
@@ -26,7 +26,7 @@ def campaign(db):
 def delivery(monkeypatch):
     calls = []
     monkeypatch.setattr("app.delivery.frequency.is_delivery_available", lambda: True)
-    monkeypatch.setattr("app.delivery.frequency.deliver_ad", lambda run, data: calls.append(run.id) or "<VAST/>")
+    monkeypatch.setattr("app.delivery.frequency.deliver_ad", lambda run, tag, data: calls.append(run.id) or "<VAST/>")
     monkeypatch.setattr("app.pipeline.runner._load_final_ad", lambda run: b"audio")
     return calls
 
@@ -57,7 +57,7 @@ class TestDeliverPendingPushes:
     def test_failure_records_error_and_marks_failed(self, campaign, delivery, monkeypatch):
         from app.delivery.frequency import FrequencyDeliveryError
 
-        def boom(run, data):
+        def boom(run, tag, data):
             raise FrequencyDeliveryError("Frequency publish draft failed: HTTP 500")
         monkeypatch.setattr("app.delivery.frequency.deliver_ad", boom)
         run = _pushed_run(campaign)

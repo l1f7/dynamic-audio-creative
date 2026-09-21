@@ -25,6 +25,8 @@ from urllib.parse import quote
 import requests
 from flask import current_app
 
+from app.models.campaign import FREQUENCY_TAG_APP_ID_KEY, FREQUENCY_TAG_TOKEN_KEY
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,11 +52,11 @@ def is_delivery_available() -> bool:
         return False
 
 
-def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
-    """Run the full five-step Frequency delivery workflow."""
+def deliver_ad(ad_run, tag: dict, final_ad_bytes: bytes) -> str:
+    """Run the full five-step Frequency delivery workflow for one tag (ad unit)."""
     cfg = current_app.config
     base_url = cfg.get("CMPAPI_BASE_URL", "").rstrip("/")
-    app_id = ad_run.campaign.frequency_app_id
+    app_id = tag.get(FREQUENCY_TAG_APP_ID_KEY)
 
     logger.info("[Frequency] Starting delivery for ad_run #%s", ad_run.id)
     logger.info("[Frequency] base_url=%s  app_id=%s", base_url, app_id)
@@ -69,7 +71,7 @@ def deliver_ad(ad_run, final_ad_bytes: bytes) -> str:
 
     advertiser = ad_run.campaign.advertiser
     client = advertiser.frequency_client
-    token = ad_run.campaign.frequency_token
+    token = tag.get(FREQUENCY_TAG_TOKEN_KEY)
 
     logger.info(
         "[Frequency] advertiser=%s  client=%s  token=%s",

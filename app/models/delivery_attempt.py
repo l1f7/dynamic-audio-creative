@@ -40,6 +40,10 @@ class DeliveryAttempt(db.Model):
     # Why it failed, verbatim, for the admin UI and the drop app.
     error = db.Column(db.Text, nullable=True)
 
+    # Which ad unit this attempt was for, when a target has more than one
+    # (e.g. a Frequency tag's app_id). Null for single-unit targets like DV360.
+    detail = db.Column(db.Text, nullable=True)
+
     attempted_at = db.Column(
         db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )

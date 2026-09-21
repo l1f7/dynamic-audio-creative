@@ -29,7 +29,7 @@ from app.admin.forms import (
 from app.delivery import frequency_token
 from app.extensions import db
 from app.models import AdRun, AdminUser, Advertiser, ApiKey, Campaign, PronunciationEntry
-from app.models.campaign import PUSH_FEED_TYPE
+from app.models.campaign import FREQUENCY_TAG_APP_ID_KEY, FREQUENCY_TAG_TOKEN_KEY, PUSH_FEED_TYPE
 
 
 PASSWORD_CHANGE_ENDPOINT = "admin.account_password"
@@ -317,23 +317,44 @@ def advertiser_edit(adv_id):
     )
 
 
-def _frequency_token_is_sound(form) -> bool:
-    """Decode the token on save and report what it points at; a malformed token blocks."""
-    token = (form.frequency_token.data or "").strip()
-    if not token:
-        return True
-    try:
-        payload = frequency_token.decode_payload(token)
-    except frequency_token.InvalidFrequencyToken as exc:
-        form.frequency_token.errors.append(str(exc))
-        return False
-    flash("Frequency token points at: " + _describe_payload(payload), "info")
-    _report_frequency_validation(_frequency_client_for(form), token)
-    return True
+FREQUENCY_TOKEN_FIELD_PREFIX = "freq_token_"
+
+
+def _frequency_token_rows(form_data) -> list[str]:
+    """Raw token strings from the repeatable Frequency Tags editor rows."""
+    tokens = []
+    i = 0
+    while True:
+        field_name = f"{FREQUENCY_TOKEN_FIELD_PREFIX}{i}"
+        if field_name not in form_data:
+            break
+        token = form_data.get(field_name, "").strip()
+        if token:
+            tokens.append(token)
+        i += 1
+    return tokens
+
+
+def _build_frequency_tags(tokens: list[str], client: str | None) -> tuple[list[dict], list[str]]:
+    """Decode and resolve each pasted token into a stored tag; a malformed token blocks saving."""
+    tags = []
+    errors = []
+    for token in tokens:
+        try:
+            payload = frequency_token.decode_payload(token)
+        except frequency_token.InvalidFrequencyToken as exc:
+            errors.append(str(exc))
+            continue
+        flash("Frequency token points at: " + _describe_payload(payload), "info")
+        tags.append({
+            FREQUENCY_TAG_TOKEN_KEY: token,
+            FREQUENCY_TAG_APP_ID_KEY: _resolve_frequency_app_id(client, token),
+        })
+    return tags, errors
 
 
 def _frequency_client_for(form) -> str | None:
-    """The validate call needs the advertiser's client name alongside the campaign's token."""
+    """The validate call needs the advertiser's client name alongside each token."""
     advertiser = Advertiser.query.get(form.advertiser_id.data)
     return advertiser.frequency_client if advertiser else None
 
@@ -351,27 +372,33 @@ def _token_summary(token):
         return None
 
 
+def _frequency_tag_summaries(campaign):
+    """Decoded (label, value) pairs for each saved tag, aligned by index for the template."""
+    return [_token_summary(tag.get(FREQUENCY_TAG_TOKEN_KEY)) for tag in campaign.frequency_tag_list]
+
+
 APPLICATION_ID_KEYS = ("applicationId", "application_id", "app_id")
 
 
-def _report_frequency_validation(client, token: str) -> None:
-    """Ask Frequency whether the token is live. Failure warns but never blocks saving."""
+def _resolve_frequency_app_id(client, token: str):
+    """Ask Frequency what application ID this token belongs to. Failure warns but never blocks saving."""
     from app.delivery.frequency import FrequencyDeliveryError, _validate
 
     base_url = (current_app.config.get("CMPAPI_BASE_URL") or "").rstrip("/")
     if not base_url or not client:
         flash("Frequency validation skipped: set CMPAPI_BASE_URL and a client name to check the token.", "warning")
-        return
+        return None
     try:
         data = _validate(base_url, client, token).json()
     except (FrequencyDeliveryError, ValueError, OSError) as exc:
         flash(f"Frequency did not accept this token: {exc}", "warning")
-        return
+        return None
     campaign_id = (data.get("tokenData") or {}).get("campaign_id")
     flash(f"Frequency token is live (campaign {campaign_id}).", "success")
     app_id = _find_application_id(data)
     if app_id is not None:
         flash(f"Frequency reports application ID {app_id} for this token.", "info")
+    return app_id
 
 
 def _find_application_id(data: dict):
@@ -437,51 +464,57 @@ def campaign_new():
         (a.id, a.name) for a in Advertiser.query.order_by(Advertiser.name).all()
     ]
 
-    if form.validate_on_submit() and _frequency_token_is_sound(form):
-        campaign = Campaign(
-            name=form.name.data,
-            advertiser_id=form.advertiser_id.data,
-            is_active=form.is_active.data,
-            campaign_type=form.campaign_type.data,
-            feed_type=form.feed_type.data,
-            feed_url=form.feed_url.data or None,
-            target_city=form.target_city.data or None,
-            cta=form.cta.data or None,
-            seasonal_hook=form.seasonal_hook.data or None,
-            voice_preset=form.voice_preset.data or None,
-            voice_custom_id=(form.voice_custom_id.data or "").strip() or None,
-            intro_seconds=form.intro_seconds.data,
-            outro_seconds=form.outro_seconds.data,
-            duck_volume=form.duck_volume.data,
-            duck_fade=form.duck_fade.data,
-            prompt_template=form.prompt_template.data or None,
-            fallback_script=form.fallback_script.data or None,
-            target_seconds=form.target_seconds.data,
-            target_words=form.target_words.data,
-            cron_schedule=form.cron_schedule.data or None,
-            frequency_app_id=form.frequency_app_id.data or None,
-            frequency_token=(form.frequency_token.data or "").strip() or None,
-            dv360_enabled=form.dv360_enabled.data,
-            dv360_line_item_id=form.dv360_line_item_id.data or None,
-            dv360_advertiser_id=form.dv360_advertiser_id.data or None,
-            dv360_service_account_json=_minify_json(form.dv360_service_account_json.data),
+    if form.validate_on_submit():
+        frequency_tags, tag_errors = _build_frequency_tags(
+            _frequency_token_rows(request.form), _frequency_client_for(form)
         )
-        _save_feed_filter_config(campaign, form)
-        _normalize_push_campaign(campaign)
-        db.session.add(campaign)
-        db.session.commit()
+        for message in tag_errors:
+            flash(message, "danger")
 
-        # Upload music bed if provided
-        _handle_music_bed_upload(campaign, form)
+        if not tag_errors:
+            campaign = Campaign(
+                name=form.name.data,
+                advertiser_id=form.advertiser_id.data,
+                is_active=form.is_active.data,
+                campaign_type=form.campaign_type.data,
+                feed_type=form.feed_type.data,
+                feed_url=form.feed_url.data or None,
+                target_city=form.target_city.data or None,
+                cta=form.cta.data or None,
+                seasonal_hook=form.seasonal_hook.data or None,
+                voice_preset=form.voice_preset.data or None,
+                voice_custom_id=(form.voice_custom_id.data or "").strip() or None,
+                intro_seconds=form.intro_seconds.data,
+                outro_seconds=form.outro_seconds.data,
+                duck_volume=form.duck_volume.data,
+                duck_fade=form.duck_fade.data,
+                prompt_template=form.prompt_template.data or None,
+                fallback_script=form.fallback_script.data or None,
+                target_seconds=form.target_seconds.data,
+                target_words=form.target_words.data,
+                cron_schedule=form.cron_schedule.data or None,
+                frequency_tags=frequency_tags or None,
+                dv360_enabled=form.dv360_enabled.data,
+                dv360_line_item_id=form.dv360_line_item_id.data or None,
+                dv360_advertiser_id=form.dv360_advertiser_id.data or None,
+                dv360_service_account_json=_minify_json(form.dv360_service_account_json.data),
+            )
+            _save_feed_filter_config(campaign, form)
+            _normalize_push_campaign(campaign)
+            db.session.add(campaign)
+            db.session.commit()
 
-        # Save pronunciation entries from form
-        _save_pronunciation_entries(campaign, request.form)
+            # Upload music bed if provided
+            _handle_music_bed_upload(campaign, form)
 
-        # Save ad tags from form
-        _save_ad_tags(campaign, request.form)
+            # Save pronunciation entries from form
+            _save_pronunciation_entries(campaign, request.form)
 
-        flash(f"Campaign '{campaign.name}' created.", "success")
-        return redirect(url_for("admin.campaign_detail", campaign_id=campaign.id))
+            # Save ad tags from form
+            _save_ad_tags(campaign, request.form)
+
+            flash(f"Campaign '{campaign.name}' created.", "success")
+            return redirect(url_for("admin.campaign_detail", campaign_id=campaign.id))
 
     return render_template(
         "admin/campaign_form.html",
@@ -758,49 +791,56 @@ def campaign_edit(campaign_id):
         form.feed_filter_key.data = feed_config.get("filter_key", "")
         form.feed_filter_contains.data = feed_config.get("filter_contains", "")
 
-    if form.validate_on_submit() and _frequency_token_is_sound(form):
-        # Preserve music bed fields — populate_obj would overwrite them
-        saved_s3_key = campaign.music_bed_s3_key
-        saved_filename = campaign.music_bed_filename
+    if form.validate_on_submit():
+        frequency_tags, tag_errors = _build_frequency_tags(
+            _frequency_token_rows(request.form), _frequency_client_for(form)
+        )
+        for message in tag_errors:
+            flash(message, "danger")
 
-        form.populate_obj(campaign)
+        if not tag_errors:
+            # Preserve music bed fields — populate_obj would overwrite them
+            saved_s3_key = campaign.music_bed_s3_key
+            saved_filename = campaign.music_bed_filename
 
-        # Restore music bed fields (handled separately via _handle_music_bed_upload)
-        campaign.music_bed_s3_key = saved_s3_key
-        campaign.music_bed_filename = saved_filename
+            form.populate_obj(campaign)
 
-        _save_feed_filter_config(campaign, form)
+            # Restore music bed fields (handled separately via _handle_music_bed_upload)
+            campaign.music_bed_s3_key = saved_s3_key
+            campaign.music_bed_filename = saved_filename
 
-        # Clear empty strings to None
-        if not campaign.feed_url:
-            campaign.feed_url = None
-        if not campaign.voice_preset:
-            campaign.voice_preset = None
-        campaign.voice_custom_id = (campaign.voice_custom_id or "").strip() or None
-        if not campaign.prompt_template:
-            campaign.prompt_template = None
-        if not campaign.fallback_script:
-            campaign.fallback_script = None
-        if not campaign.cron_schedule:
-            campaign.cron_schedule = None
-        campaign.frequency_token = (campaign.frequency_token or "").strip() or None
-        campaign.dv360_advertiser_id = campaign.dv360_advertiser_id or None
-        campaign.dv360_service_account_json = _minify_json(campaign.dv360_service_account_json)
-        _normalize_push_campaign(campaign)
+            _save_feed_filter_config(campaign, form)
 
-        db.session.commit()
+            # Clear empty strings to None
+            if not campaign.feed_url:
+                campaign.feed_url = None
+            if not campaign.voice_preset:
+                campaign.voice_preset = None
+            campaign.voice_custom_id = (campaign.voice_custom_id or "").strip() or None
+            if not campaign.prompt_template:
+                campaign.prompt_template = None
+            if not campaign.fallback_script:
+                campaign.fallback_script = None
+            if not campaign.cron_schedule:
+                campaign.cron_schedule = None
+            campaign.frequency_tags = frequency_tags or None
+            campaign.dv360_advertiser_id = campaign.dv360_advertiser_id or None
+            campaign.dv360_service_account_json = _minify_json(campaign.dv360_service_account_json)
+            _normalize_push_campaign(campaign)
 
-        # Handle music bed upload / removal
-        _handle_music_bed_upload(campaign, form)
+            db.session.commit()
 
-        # Update pronunciation entries
-        _save_pronunciation_entries(campaign, request.form)
+            # Handle music bed upload / removal
+            _handle_music_bed_upload(campaign, form)
 
-        # Update ad tags
-        _save_ad_tags(campaign, request.form)
+            # Update pronunciation entries
+            _save_pronunciation_entries(campaign, request.form)
 
-        flash(f"Campaign '{campaign.name}' updated.", "success")
-        return redirect(url_for("admin.campaign_detail", campaign_id=campaign.id))
+            # Update ad tags
+            _save_ad_tags(campaign, request.form)
+
+            flash(f"Campaign '{campaign.name}' updated.", "success")
+            return redirect(url_for("admin.campaign_detail", campaign_id=campaign.id))
 
     return render_template(
         "admin/campaign_form.html",
@@ -808,7 +848,7 @@ def campaign_edit(campaign_id):
         editing=True,
         campaign=campaign,
         feed_type_suggestions=_get_feed_type_suggestions(),
-        token_summary=_token_summary(campaign.frequency_token),
+        frequency_tag_summaries=_frequency_tag_summaries(campaign),
     )
 
 

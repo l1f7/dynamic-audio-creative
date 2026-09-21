@@ -11,6 +11,7 @@ from app.delivery.frequency import (
     is_delivery_available,
 )
 from app.models import Advertiser, Campaign
+from app.models.campaign import FREQUENCY_TAG_APP_ID_KEY, FREQUENCY_TAG_TOKEN_KEY
 
 
 def _make_ad_run(db, **campaign_overrides):
@@ -34,6 +35,10 @@ def _make_ad_run(db, **campaign_overrides):
     run = FakeAdRun()
     run.campaign = campaign
     return run
+
+
+def _tag(app_id="12345", token="tok"):
+    return {FREQUENCY_TAG_APP_ID_KEY: app_id, FREQUENCY_TAG_TOKEN_KEY: token}
 
 
 class TestFrequencyConfigGuards:
@@ -60,29 +65,29 @@ class TestFrequencyConfigGuards:
 
     def test_deliver_raises_without_base_url(self, client, db):
         """deliver_ad refuses to run when CMPAPI_BASE_URL is not set."""
-        run = _make_ad_run(db, frequency_app_id="12345")
+        run = _make_ad_run(db)
 
         with pytest.raises(FrequencyNotConfiguredError):
-            deliver_ad(run, b"fake-mp3-bytes")
+            deliver_ad(run, _tag(), b"fake-mp3-bytes")
 
-    def test_deliver_raises_without_campaign_token(self, client, db, app):
-        """deliver_ad refuses to run when the campaign has no Frequency token."""
-        run = _make_ad_run(db, frequency_app_id="12345", frequency_token=None)
+    def test_deliver_raises_without_tag_token(self, client, db, app):
+        """deliver_ad refuses to run when the tag has no token."""
+        run = _make_ad_run(db)
         run.campaign.advertiser.frequency_client = "acme"
         app.config["CMPAPI_BASE_URL"] = "https://cmpapi.example.com"
         try:
             with pytest.raises(FrequencyNotConfiguredError, match="no Frequency token"):
-                deliver_ad(run, b"fake-mp3-bytes")
+                deliver_ad(run, _tag(token=None), b"fake-mp3-bytes")
         finally:
             app.config.pop("CMPAPI_BASE_URL")
 
     def test_deliver_raises_without_app_id(self, client, db, app):
-        """deliver_ad refuses to run when the campaign has no Frequency app ID."""
-        run = _make_ad_run(db, frequency_app_id=None)
+        """deliver_ad refuses to run when the tag has no app ID."""
+        run = _make_ad_run(db)
         app.config["CMPAPI_BASE_URL"] = "https://cmpapi.example.com"
         try:
             with pytest.raises(FrequencyNotConfiguredError) as exc_info:
-                deliver_ad(run, b"fake-mp3-bytes")
+                deliver_ad(run, _tag(app_id=None), b"fake-mp3-bytes")
         finally:
             app.config.pop("CMPAPI_BASE_URL")
 

@@ -271,28 +271,29 @@
                 </div>
             </div>
             <div class="mb-3">
-                <label class="form-label">Frequency App ID</label>
-                {{ form.frequency_app_id(class="form-control", placeholder="e.g. 12345") }}
-                <small class="text-muted">Required when Frequency delivery is enabled. The Frequency application ID to deliver ads to. Whether this can be derived from the token is still unconfirmed against staging, so it stays typed for now.</small>
+                <label class="form-label">Frequency Tags</label>
+                <p class="text-muted small mb-2">One Frequency ad-unit token per row — a campaign may need to reach more than one. The app ID is resolved automatically from each token when you save.</p>
+                <div id="freq-tag-rows">
+                    {% if editing and campaign and campaign.frequency_tags %}
+                        {% for tag in campaign.frequency_tags %}
+                        <div class="mb-2 freq-tag-row">
+                            <div class="d-flex">
+                                <textarea name="freq_token_{{ loop.index0 }}" class="form-control form-control-sm font-monospace me-2" rows="2" placeholder="Paste Frequency JWT token here…">{{ tag.token }}</textarea>
+                                <button type="button" class="btn btn-sm btn-outline-danger align-self-start" onclick="this.closest('.freq-tag-row').remove(); _renumberFreqTags()">Remove</button>
+                            </div>
+                            {% if tag.app_id %}
+                            <small class="text-muted">Resolved app ID: {{ tag.app_id }}</small>
+                            {% endif %}
+                            {% set summary = frequency_tag_summaries[loop.index0] if frequency_tag_summaries else None %}
+                            {% if summary %}
+                            <small class="text-muted d-block">{% for label, value in summary %}{{ label }} {{ value }}{% if not loop.last %}, {% endif %}{% endfor %}</small>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary mt-1" id="add-freq-tag">+ Add Tag</button>
             </div>
-            <div class="mb-3">
-                <label class="form-label">Frequency Token</label>
-                {{ form.frequency_token(class="form-control font-monospace" + (" is-invalid" if form.frequency_token.errors else "")) }}
-                {% for error in form.frequency_token.errors %}
-                <div class="invalid-feedback">{{ error }}</div>
-                {% endfor %}
-                <small class="text-muted">A JWT issued by Frequency for this campaign's ad unit. It is decoded and checked against Frequency when you save.</small>
-            </div>
-            {% if token_summary %}
-            <div class="card mb-3">
-                <div class="card-header small text-uppercase">Saved token points at</div>
-                <ul class="list-group list-group-flush">
-                    {% for label, value in token_summary %}
-                    <li class="list-group-item d-flex justify-content-between"><span class="text-muted">{{ label }}</span><span>{{ value }}</span></li>
-                    {% endfor %}
-                </ul>
-            </div>
-            {% endif %}
             <hr class="my-3">
             <div class="mb-3">
                 <div class="form-check">
@@ -339,6 +340,27 @@ document.getElementById('add-ad-tag').addEventListener('click', function() {
     row.innerHTML = `
         <textarea name="ad_tag_${idx}" class="form-control form-control-sm me-2" rows="2" placeholder="Paste exact tag/outro text here…"></textarea>
         <button type="button" class="btn btn-sm btn-outline-danger align-self-start" onclick="this.closest('.ad-tag-row').remove(); _renumberAdTags()">Remove</button>
+    `;
+    container.appendChild(row);
+    row.querySelector('textarea').focus();
+});
+
+function _renumberFreqTags() {
+    document.querySelectorAll('#freq-tag-rows .freq-tag-row textarea').forEach(function(ta, i) {
+        ta.name = 'freq_token_' + i;
+    });
+}
+
+document.getElementById('add-freq-tag').addEventListener('click', function() {
+    const container = document.getElementById('freq-tag-rows');
+    const idx = container.querySelectorAll('.freq-tag-row').length;
+    const row = document.createElement('div');
+    row.className = 'mb-2 freq-tag-row';
+    row.innerHTML = `
+        <div class="d-flex">
+            <textarea name="freq_token_${idx}" class="form-control form-control-sm font-monospace me-2" rows="2" placeholder="Paste Frequency JWT token here…"></textarea>
+            <button type="button" class="btn btn-sm btn-outline-danger align-self-start" onclick="this.closest('.freq-tag-row').remove(); _renumberFreqTags()">Remove</button>
+        </div>
     `;
     container.appendChild(row);
     row.querySelector('textarea').focus();
