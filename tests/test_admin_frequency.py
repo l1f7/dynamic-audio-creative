@@ -2,7 +2,9 @@
 
 A campaign may need to reach more than one Frequency ad unit, so tokens are
 entered as repeatable rows (freq_token_0, freq_token_1, ...) rather than a
-single field. Each token's app_id is resolved against Frequency on save; the
+single field. Each row also carries an app_id (freq_app_id_0, ...); a blank
+one is resolved against Frequency on save, but a value already on the row is
+kept as-is so a working app_id is never silently wiped by a later save. The
 validate call needs the advertiser's client name, which the route looks up
 from the campaign's chosen advertiser.
 """
@@ -30,14 +32,20 @@ def advertiser(db):
     return adv
 
 
-def _post_campaign(client, advertiser, tokens=(), **overrides):
+def _campaign_form_data(advertiser, tokens=(), app_ids=(), **overrides):
     data = {
         "name": "Spring", "advertiser_id": advertiser.id, "is_active": "y",
         "feed_type": "weather", "intro_seconds": 2.0, "outro_seconds": 2.0,
         "duck_volume": 0.2, "duck_fade": 0.5, "target_seconds": 30, "target_words": 75,
     }
     data.update({f"freq_token_{i}": token for i, token in enumerate(tokens)})
+    data.update({f"freq_app_id_{i}": app_id for i, app_id in enumerate(app_ids)})
     data.update(overrides)
+    return data
+
+
+def _post_campaign(client, advertiser, tokens=(), app_ids=(), **overrides):
+    data = _campaign_form_data(advertiser, tokens=tokens, app_ids=app_ids, **overrides)
     return client.post("/admin/campaigns/new", data=data, follow_redirects=True)
 
 
@@ -120,3 +128,53 @@ class TestTagsOnSave:
         resp = _post_campaign(authenticated_client, advertiser, tokens=[VALID_TOKEN])
         assert b"Frequency validation skipped" in resp.data
         assert Campaign.query.count() == 1
+
+    def test_a_stored_app_id_survives_a_resave(self, authenticated_client, db, app, monkeypatch, advertiser):
+        """Regression: re-saving used to wipe app_id whenever live validation found none.
+
+        The app_id field round-trips on the form, so a value already there
+        must be kept exactly as posted, not replaced by a fresh (possibly
+        empty) lookup against Frequency.
+        """
+        camp = Campaign(name="Spring", advertiser_id=advertiser.id, feed_type="weather",
+                        frequency_tags=[{"token": VALID_TOKEN, "app_id": "77"}])
+        db.session.add(camp)
+        db.session.commit()
+
+        class EmptyResponse:
+            def json(self):
+                return {"authToken": "x", "tokenData": {"campaign_id": 1016}}
+
+        monkeypatch.setattr("app.delivery.frequency._validate", lambda base_url, client, token: EmptyResponse())
+        monkeypatch.setitem(app.config, "CMPAPI_BASE_URL", STAGING_URL)
+
+        resp = authenticated_client.post(
+            f"/admin/campaigns/{camp.id}/edit",
+            data=_campaign_form_data(advertiser, tokens=[VALID_TOKEN], app_ids=["77"]),
+            follow_redirects=True,
+        )
+
+        assert resp.status_code == 200
+        assert Campaign.query.one().frequency_tags == [{"token": VALID_TOKEN, "app_id": "77"}]
+
+    def test_blank_app_id_is_still_resolved_from_frequency(self, authenticated_client, db, app, monkeypatch, advertiser):
+        """A new row with no app_id yet still gets the convenience lookup."""
+        camp = Campaign(name="Spring", advertiser_id=advertiser.id, feed_type="weather",
+                        frequency_tags=[{"token": VALID_TOKEN, "app_id": None}])
+        db.session.add(camp)
+        db.session.commit()
+
+        class FakeResponse:
+            def json(self):
+                return {"authToken": "x", "tokenData": {"campaign_id": 1016, "application_id": 77}}
+
+        monkeypatch.setattr("app.delivery.frequency._validate", lambda base_url, client, token: FakeResponse())
+        monkeypatch.setitem(app.config, "CMPAPI_BASE_URL", STAGING_URL)
+
+        authenticated_client.post(
+            f"/admin/campaigns/{camp.id}/edit",
+            data=_campaign_form_data(advertiser, tokens=[VALID_TOKEN], app_ids=[""]),
+            follow_redirects=True,
+        )
+
+        assert Campaign.query.one().frequency_tags == [{"token": VALID_TOKEN, "app_id": 77}]

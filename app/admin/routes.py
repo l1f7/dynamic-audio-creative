@@ -318,28 +318,36 @@ def advertiser_edit(adv_id):
 
 
 FREQUENCY_TOKEN_FIELD_PREFIX = "freq_token_"
+FREQUENCY_APP_ID_FIELD_PREFIX = "freq_app_id_"
 
 
-def _frequency_token_rows(form_data) -> list[str]:
-    """Raw token strings from the repeatable Frequency Tags editor rows."""
-    tokens = []
+def _frequency_tag_rows(form_data) -> list[tuple[str, str]]:
+    """Raw (token, app_id) pairs from the repeatable Frequency Tags editor rows."""
+    rows = []
     i = 0
     while True:
-        field_name = f"{FREQUENCY_TOKEN_FIELD_PREFIX}{i}"
-        if field_name not in form_data:
+        token_field = f"{FREQUENCY_TOKEN_FIELD_PREFIX}{i}"
+        if token_field not in form_data:
             break
-        token = form_data.get(field_name, "").strip()
+        token = form_data.get(token_field, "").strip()
+        app_id = form_data.get(f"{FREQUENCY_APP_ID_FIELD_PREFIX}{i}", "").strip()
         if token:
-            tokens.append(token)
+            rows.append((token, app_id))
         i += 1
-    return tokens
+    return rows
 
 
-def _build_frequency_tags(tokens: list[str], client: str | None) -> tuple[list[dict], list[str]]:
-    """Decode and resolve each pasted token into a stored tag; a malformed token blocks saving."""
+def _build_frequency_tags(rows: list[tuple[str, str]], client: str | None) -> tuple[list[dict], list[str]]:
+    """Decode each pasted token into a stored tag; a malformed token blocks saving.
+
+    An app_id typed on the row is kept as-is — it is never overwritten by a
+    later save. Only a blank app_id is looked up against Frequency, since that
+    lookup does not always return one and must not erase a value that already
+    works.
+    """
     tags = []
     errors = []
-    for token in tokens:
+    for token, app_id in rows:
         try:
             payload = frequency_token.decode_payload(token)
         except frequency_token.InvalidFrequencyToken as exc:
@@ -348,7 +356,7 @@ def _build_frequency_tags(tokens: list[str], client: str | None) -> tuple[list[d
         flash("Frequency token points at: " + _describe_payload(payload), "info")
         tags.append({
             FREQUENCY_TAG_TOKEN_KEY: token,
-            FREQUENCY_TAG_APP_ID_KEY: _resolve_frequency_app_id(client, token),
+            FREQUENCY_TAG_APP_ID_KEY: app_id or _resolve_frequency_app_id(client, token),
         })
     return tags, errors
 
@@ -466,7 +474,7 @@ def campaign_new():
 
     if form.validate_on_submit():
         frequency_tags, tag_errors = _build_frequency_tags(
-            _frequency_token_rows(request.form), _frequency_client_for(form)
+            _frequency_tag_rows(request.form), _frequency_client_for(form)
         )
         for message in tag_errors:
             flash(message, "danger")
@@ -793,7 +801,7 @@ def campaign_edit(campaign_id):
 
     if form.validate_on_submit():
         frequency_tags, tag_errors = _build_frequency_tags(
-            _frequency_token_rows(request.form), _frequency_client_for(form)
+            _frequency_tag_rows(request.form), _frequency_client_for(form)
         )
         for message in tag_errors:
             flash(message, "danger")
