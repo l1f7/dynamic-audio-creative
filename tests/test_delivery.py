@@ -4,6 +4,7 @@ import pytest
 
 from app.delivery.frequency import (
     FrequencyNotConfiguredError,
+    _banners_for_row,
     _creative_list,
     _row_index_for_new_creative,
     _serve_option_for_new_creative,
@@ -123,9 +124,34 @@ class TestExistingCreatives:
         existing = [{"type": "image", "rowIndex": 3}]
         assert _row_index_for_new_creative(existing) == 0
 
+    def test_row_index_avoids_banner_already_in_row_zero(self):
+        existing = [{"type": "image", "rowIndex": 0}]
+        assert _row_index_for_new_creative(existing) == 1
+
+    def test_row_index_skips_every_occupied_row(self):
+        existing = [
+            {"type": "image", "rowIndex": 0},
+            {"type": "image", "rowIndex": 1},
+        ]
+        assert _row_index_for_new_creative(existing) == 2
+
     def test_row_index_tolerates_missing_or_bad_values(self):
         existing = [{"type": "audio"}, {"type": "audio", "rowIndex": "not-a-number"}]
         assert _row_index_for_new_creative(existing) == 0
+
+    def test_banners_carry_forward_from_the_joined_row(self):
+        banner = [{"name": "companion.png", "width": 300, "height": 250, "fileUrl": "https://x/companion.png"}]
+        existing = [{"type": "audio", "rowIndex": 1, "banners": banner}]
+        assert _banners_for_row(existing, 1) == banner
+
+    def test_banners_empty_for_a_fresh_row(self):
+        existing = [{"type": "image", "rowIndex": 0}]
+        assert _banners_for_row(existing, 1) == []
+
+    def test_banners_ignored_from_a_different_row(self):
+        banner = [{"name": "companion.png"}]
+        existing = [{"type": "audio", "rowIndex": 2, "banners": banner}]
+        assert _banners_for_row(existing, 1) == []
 
     def test_serve_option_matches_existing_creative(self):
         assert _serve_option_for_new_creative([{"serveOption": "sequential"}]) == "sequential"
@@ -133,3 +159,84 @@ class TestExistingCreatives:
     def test_serve_option_defaults_to_random(self):
         assert _serve_option_for_new_creative([]) == "random"
         assert _serve_option_for_new_creative([{"serveOption": None}]) == "random"
+
+
+class _FakeResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+class TestDeliverAdCarriesBannersThroughAttach:
+    """The unit tests above prove the helpers compute the right values in
+    isolation; this proves deliver_ad actually wires that value into the
+    live HTTP call — the thing a live account never gets to see fail. No
+    network involved: every CMP API boundary call is stubbed out so this
+    runs against no real Frequency environment, staging or otherwise.
+    """
+
+    def _run_delivery(self, monkeypatch, db, app, existing_creatives):
+        from app.delivery import frequency
+
+        run = _make_ad_run(db)
+        run.campaign.advertiser.frequency_client = "acme"
+        app.config["CMPAPI_BASE_URL"] = "https://cmpapi.example.com"
+
+        monkeypatch.setattr(
+            frequency, "_validate",
+            lambda *a, **k: _FakeResponse(
+                {"tokenData": {"campaign_id": 999}, "authToken": "tok123", "vastUrls": []}
+            ),
+        )
+        monkeypatch.setattr(frequency, "_create_draft", lambda *a, **k: {"id": 42})
+        monkeypatch.setattr(frequency, "_get_draft_creatives", lambda *a, **k: existing_creatives)
+        monkeypatch.setattr(frequency, "_probe_duration", lambda *a, **k: 30)
+        monkeypatch.setattr(
+            frequency, "_upload_creative",
+            lambda *a, **k: {"name": "ad.mp3", "url": "https://x/ad.mp3"},
+        )
+        monkeypatch.setattr(frequency, "_publish_draft", lambda *a, **k: "<VAST/>")
+
+        captured = {}
+
+        def fake_attach(base_url, app_id, draft_id, creative_data, headers, cookies,
+                         row_index=0, serve_option="random", banners=None):
+            captured["row_index"] = row_index
+            captured["serve_option"] = serve_option
+            captured["banners"] = banners
+
+        monkeypatch.setattr(frequency, "_attach_creative", fake_attach)
+
+        try:
+            result = frequency.deliver_ad(run, _tag(), b"fake-mp3-bytes")
+        finally:
+            app.config.pop("CMPAPI_BASE_URL")
+
+        return result, captured
+
+    def test_banner_paired_with_the_joined_row_is_attached_with_the_new_audio(
+        self, client, db, app, monkeypatch
+    ):
+        banner = [{"name": "companion.png", "width": 300, "height": 250, "fileUrl": "https://x/companion.png"}]
+        existing = [{"type": "audio", "rowIndex": 0, "banners": banner, "serveOption": "random"}]
+
+        result, captured = self._run_delivery(monkeypatch, db, app, existing)
+
+        assert result == "<VAST/>"
+        assert captured["row_index"] == 0
+        assert captured["banners"] == banner
+
+    def test_fresh_row_next_to_a_banner_attaches_with_no_banners(
+        self, client, db, app, monkeypatch
+    ):
+        """A banner sitting at row 0 with no audio yet must not be dragged
+        into the new audio's row — it has nothing to do with this creative."""
+        existing = [{"type": "image", "rowIndex": 0, "banners": [{"name": "unrelated.png"}]}]
+
+        result, captured = self._run_delivery(monkeypatch, db, app, existing)
+
+        assert result == "<VAST/>"
+        assert captured["row_index"] == 1
+        assert captured["banners"] == []

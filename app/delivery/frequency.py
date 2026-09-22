@@ -136,11 +136,13 @@ def deliver_ad(ad_run, tag: dict, final_ad_bytes: bytes) -> str:
     if existing_creatives:
         for existing in existing_creatives:
             logger.info(
-                "[Frequency] Existing creative — name=%s  type=%s  rowIndex=%s  weight=%s",
+                "[Frequency] Existing creative — name=%s  type=%s  rowIndex=%s  weight=%s  "
+                "banners=%s",
                 existing.get("fileName") or existing.get("name"),
                 existing.get("type"),
                 existing.get("rowIndex"),
                 existing.get("fileWeight"),
+                [b.get("name") for b in existing.get("banners") or [] if isinstance(b, dict)],
             )
         logger.info(
             "[Frequency] Step 2b OK — %d existing creative(s) will be published alongside "
@@ -176,14 +178,16 @@ def deliver_ad(ad_run, tag: dict, final_ad_bytes: bytes) -> str:
     # --- Step 4: Attach creative to draft ---
     row_index = _row_index_for_new_creative(existing_creatives)
     serve_option = _serve_option_for_new_creative(existing_creatives)
+    banners = _banners_for_row(existing_creatives, row_index)
     logger.info(
         "[Frequency] Step 4: attach creative — POST %s/application/%s/draft/%s/creative  "
-        "rowIndex=%s  serveOption=%s",
+        "rowIndex=%s  serveOption=%s  banners=%s",
         base_url,
         app_id,
         draft_id,
         row_index,
         serve_option,
+        [b.get("name") for b in banners if isinstance(b, dict)],
     )
     _attach_creative(
         base_url,
@@ -194,6 +198,7 @@ def deliver_ad(ad_run, tag: dict, final_ad_bytes: bytes) -> str:
         auth_cookies,
         row_index=row_index,
         serve_option=serve_option,
+        banners=banners,
     )
     logger.info("[Frequency] Step 4 OK")
 
@@ -312,7 +317,11 @@ def _row_index_for_new_creative(existing_creatives: list) -> int:
 
     Creatives in the same row rotate by weight; separate rows are separate
     slots. An ad unit that already holds audio should rotate the generated ad
-    in with it, so we reuse the lowest audio row. With nothing to share, row 0.
+    in with it, so we reuse the lowest audio row. With no audio to join, we
+    must not default blindly to row 0 — a banner or other non-audio creative
+    may already live there, and landing audio in the same row would collide
+    with it instead of giving the audio its own slot. So we pick the lowest
+    row index nothing else occupies.
     """
     audio_rows = [
         row
@@ -321,7 +330,39 @@ def _row_index_for_new_creative(existing_creatives: list) -> int:
         for row in (_as_int(creative.get("rowIndex")),)
         if row is not None
     ]
-    return min(audio_rows) if audio_rows else 0
+    if audio_rows:
+        return min(audio_rows)
+
+    used_rows = {
+        row
+        for creative in existing_creatives
+        for row in (_as_int(creative.get("rowIndex")),)
+        if row is not None
+    }
+    candidate = 0
+    while candidate in used_rows:
+        candidate += 1
+    return candidate
+
+
+def _banners_for_row(existing_creatives: list, row_index: int) -> list:
+    """Carry forward whatever banner is paired with the row we're joining.
+
+    The CMP API pairs a banner with a specific creative row via a `banners`
+    field on the request that adds the row's audio — it is not a standing
+    association on the ad unit. A fresh attach call that omits it starts that
+    row with no banner, silently dropping a pairing someone set up earlier
+    until they notice and redo it by hand in Frequency's UI. Joining an
+    existing audio row means carrying its banners forward unchanged; a brand
+    new row has nothing to carry.
+    """
+    for creative in existing_creatives:
+        if _as_int(creative.get("rowIndex")) != row_index:
+            continue
+        banners = creative.get("banners")
+        if banners:
+            return banners
+    return []
 
 
 def _serve_option_for_new_creative(existing_creatives: list) -> str:
@@ -349,6 +390,7 @@ def _attach_creative(
     cookies: dict,
     row_index: int = 0,
     serve_option: str = "random",
+    banners: list | None = None,
 ) -> None:
     url = f"{base_url}/application/{app_id}/draft/{draft_id}/creative"
     body = {
@@ -359,6 +401,8 @@ def _attach_creative(
         "fileWeight": 100,
         "rowIndex": row_index,
     }
+    if banners:
+        body["banners"] = banners
     resp = requests.post(url, json=body, headers=headers, cookies=cookies, timeout=30)
     logger.info("[Frequency] _attach_creative HTTP %s", resp.status_code)
     _raise_for_status(resp, "attach creative")
