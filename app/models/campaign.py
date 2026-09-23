@@ -35,6 +35,13 @@ PUSH_FEED_TYPE = "push"
 # Keys of one entry in Campaign.frequency_tags.
 FREQUENCY_TAG_TOKEN_KEY = "token"
 FREQUENCY_TAG_APP_ID_KEY = "app_id"
+# The companion banner(s) to attach alongside every audio creative DAC pushes
+# to this ad unit. Frequency's own draft/publish cycle does not reliably
+# carry a banner forward on its own, so DAC ships it explicitly every time
+# rather than depending on whatever the ad unit's draft happens to contain.
+# A list of dicts matching Frequency's `banners` creative schema (name,
+# width, height, clickOut, fileUrl, etc.) — opaque to DAC, passed through as-is.
+FREQUENCY_TAG_BANNERS_KEY = "banners"
 
 
 class Campaign(db.Model):

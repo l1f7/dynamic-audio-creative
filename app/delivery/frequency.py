@@ -25,7 +25,11 @@ from urllib.parse import quote
 import requests
 from flask import current_app
 
-from app.models.campaign import FREQUENCY_TAG_APP_ID_KEY, FREQUENCY_TAG_TOKEN_KEY
+from app.models.campaign import (
+    FREQUENCY_TAG_APP_ID_KEY,
+    FREQUENCY_TAG_BANNERS_KEY,
+    FREQUENCY_TAG_TOKEN_KEY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -178,16 +182,23 @@ def deliver_ad(ad_run, tag: dict, final_ad_bytes: bytes) -> str:
     # --- Step 4: Attach creative to draft ---
     row_index = _row_index_for_new_creative(existing_creatives)
     serve_option = _serve_option_for_new_creative(existing_creatives)
-    banners = _banners_for_row(existing_creatives, row_index)
+    tag_banners = tag.get(FREQUENCY_TAG_BANNERS_KEY)
+    if tag_banners:
+        banners = tag_banners
+        banners_source = "tag config"
+    else:
+        banners = _banners_for_row(existing_creatives, row_index)
+        banners_source = "existing row" if banners else "none"
     logger.info(
         "[Frequency] Step 4: attach creative — POST %s/application/%s/draft/%s/creative  "
-        "rowIndex=%s  serveOption=%s  banners=%s",
+        "rowIndex=%s  serveOption=%s  banners=%s (source: %s)",
         base_url,
         app_id,
         draft_id,
         row_index,
         serve_option,
         [b.get("name") for b in banners if isinstance(b, dict)],
+        banners_source,
     )
     _attach_creative(
         base_url,
@@ -346,7 +357,13 @@ def _row_index_for_new_creative(existing_creatives: list) -> int:
 
 
 def _banners_for_row(existing_creatives: list, row_index: int) -> list:
-    """Carry forward whatever banner is paired with the row we're joining.
+    """Fallback: carry forward whatever banner is paired with the row we're joining.
+
+    Only used when the tag has no FREQUENCY_TAG_BANNERS_KEY configured. DAC
+    cannot rely on a freshly created draft actually reflecting what is live —
+    Frequency's own editor seeds a new draft from a specific release id, which
+    DAC's automated flow has no verified way to obtain — so a campaign that
+    needs a banner should configure one on its tag rather than depend on this.
 
     The CMP API pairs a banner with a specific creative row via a `banners`
     field on the request that adds the row's audio — it is not a standing

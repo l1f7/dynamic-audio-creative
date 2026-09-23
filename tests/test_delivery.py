@@ -12,7 +12,11 @@ from app.delivery.frequency import (
     is_delivery_available,
 )
 from app.models import Advertiser, Campaign
-from app.models.campaign import FREQUENCY_TAG_APP_ID_KEY, FREQUENCY_TAG_TOKEN_KEY
+from app.models.campaign import (
+    FREQUENCY_TAG_APP_ID_KEY,
+    FREQUENCY_TAG_BANNERS_KEY,
+    FREQUENCY_TAG_TOKEN_KEY,
+)
 
 
 def _make_ad_run(db, **campaign_overrides):
@@ -38,8 +42,11 @@ def _make_ad_run(db, **campaign_overrides):
     return run
 
 
-def _tag(app_id="12345", token="tok"):
-    return {FREQUENCY_TAG_APP_ID_KEY: app_id, FREQUENCY_TAG_TOKEN_KEY: token}
+def _tag(app_id="12345", token="tok", banners=None):
+    tag = {FREQUENCY_TAG_APP_ID_KEY: app_id, FREQUENCY_TAG_TOKEN_KEY: token}
+    if banners is not None:
+        tag[FREQUENCY_TAG_BANNERS_KEY] = banners
+    return tag
 
 
 class TestFrequencyConfigGuards:
@@ -177,7 +184,7 @@ class TestDeliverAdCarriesBannersThroughAttach:
     runs against no real Frequency environment, staging or otherwise.
     """
 
-    def _run_delivery(self, monkeypatch, db, app, existing_creatives):
+    def _run_delivery(self, monkeypatch, db, app, existing_creatives, tag=None):
         from app.delivery import frequency
 
         run = _make_ad_run(db)
@@ -210,7 +217,7 @@ class TestDeliverAdCarriesBannersThroughAttach:
         monkeypatch.setattr(frequency, "_attach_creative", fake_attach)
 
         try:
-            result = frequency.deliver_ad(run, _tag(), b"fake-mp3-bytes")
+            result = frequency.deliver_ad(run, tag or _tag(), b"fake-mp3-bytes")
         finally:
             app.config.pop("CMPAPI_BASE_URL")
 
@@ -240,3 +247,34 @@ class TestDeliverAdCarriesBannersThroughAttach:
         assert result == "<VAST/>"
         assert captured["row_index"] == 1
         assert captured["banners"] == []
+
+    def test_tag_configured_banners_are_shipped_regardless_of_the_draft(
+        self, client, db, app, monkeypatch
+    ):
+        """DAC ships its own known banner every time rather than trusting a
+        freshly created draft to already carry one forward from Frequency."""
+        tag_banner = [{"name": "dac-configured.png", "width": 300, "height": 250,
+                        "fileUrl": "https://x/dac-configured.png"}]
+        existing = []  # a brand-new draft with nothing on it yet
+
+        result, captured = self._run_delivery(
+            monkeypatch, db, app, existing, tag=_tag(banners=tag_banner)
+        )
+
+        assert result == "<VAST/>"
+        assert captured["banners"] == tag_banner
+
+    def test_tag_configured_banners_override_whatever_the_row_already_has(
+        self, client, db, app, monkeypatch
+    ):
+        row_banner = [{"name": "stale-from-frequency.png"}]
+        tag_banner = [{"name": "dac-configured.png", "width": 300, "height": 250,
+                        "fileUrl": "https://x/dac-configured.png"}]
+        existing = [{"type": "audio", "rowIndex": 0, "banners": row_banner}]
+
+        result, captured = self._run_delivery(
+            monkeypatch, db, app, existing, tag=_tag(banners=tag_banner)
+        )
+
+        assert result == "<VAST/>"
+        assert captured["banners"] == tag_banner
