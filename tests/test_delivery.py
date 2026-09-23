@@ -5,6 +5,7 @@ import pytest
 from app.delivery.frequency import (
     FrequencyNotConfiguredError,
     _banners_for_row,
+    _current_version_draft_id,
     _creative_list,
     _row_index_for_new_creative,
     _serve_option_for_new_creative,
@@ -160,6 +161,30 @@ class TestExistingCreatives:
         existing = [{"type": "audio", "rowIndex": 2, "banners": banner}]
         assert _banners_for_row(existing, 1) == []
 
+    def test_banners_read_from_where_frequency_stores_them(self):
+        banner = [{"name": "companion.png"}]
+        existing = [{"type": "audio", "data": {"rowIndex": 0, "banners": banner}}]
+        assert _banners_for_row(existing, 0) == banner
+
+    def test_row_index_read_from_where_frequency_stores_it(self):
+        existing = [{"type": "audio", "data": {"rowIndex": 2}}]
+        assert _row_index_for_new_creative(existing) == 2
+
+    def test_banners_ignored_on_non_audio_creatives(self):
+        existing = [{"type": "image", "rowIndex": 0, "data": {"banners": [{"name": "x.png"}]}}]
+        assert _banners_for_row(existing, 0) == []
+
+    def test_current_version_draft_id_picks_the_live_version(self):
+        versions = [
+            {"isCurrent": False, "application_draft_id": 1},
+            {"isCurrent": True, "application_draft_id": 2},
+        ]
+        assert _current_version_draft_id(versions) == 2
+
+    def test_current_version_draft_id_none_without_a_live_version(self):
+        assert _current_version_draft_id([{"isCurrent": False, "application_draft_id": 1}]) is None
+        assert _current_version_draft_id([]) is None
+
     def test_serve_option_matches_existing_creative(self):
         assert _serve_option_for_new_creative([{"serveOption": "sequential"}]) == "sequential"
 
@@ -184,7 +209,8 @@ class TestDeliverAdCarriesBannersThroughAttach:
     runs against no real Frequency environment, staging or otherwise.
     """
 
-    def _run_delivery(self, monkeypatch, db, app, existing_creatives, tag=None):
+    def _run_delivery(self, monkeypatch, db, app, existing_creatives, tag=None,
+                      live_creatives=None):
         from app.delivery import frequency
 
         run = _make_ad_run(db)
@@ -199,6 +225,9 @@ class TestDeliverAdCarriesBannersThroughAttach:
         )
         monkeypatch.setattr(frequency, "_create_draft", lambda *a, **k: {"id": 42})
         monkeypatch.setattr(frequency, "_get_draft_creatives", lambda *a, **k: existing_creatives)
+        monkeypatch.setattr(
+            frequency, "_get_live_creatives", lambda *a, **k: live_creatives or []
+        )
         monkeypatch.setattr(frequency, "_probe_duration", lambda *a, **k: 30)
         monkeypatch.setattr(
             frequency, "_upload_creative",
@@ -278,3 +307,34 @@ class TestDeliverAdCarriesBannersThroughAttach:
 
         assert result == "<VAST/>"
         assert captured["banners"] == tag_banner
+
+    def test_live_version_banners_are_reattached_to_the_new_audio(
+        self, client, db, app, monkeypatch
+    ):
+        """A fresh draft is empty, so banners paired in Frequency's UI must be
+        read from the live version or every publish drops them."""
+        live_banner = [{"name": "wmg-640.jpg", "width": 640, "height": 640,
+                        "fileUrl": "https://x/wmg-640.jpg"}]
+        live = [{"type": "audio", "data": {"rowIndex": 0, "banners": live_banner}}]
+
+        result, captured = self._run_delivery(monkeypatch, db, app, [], live_creatives=live)
+
+        assert result == "<VAST/>"
+        assert captured["banners"] == live_banner
+
+    def test_tag_configured_banners_override_the_live_version(
+        self, client, db, app, monkeypatch
+    ):
+        tag_banner = [{"name": "dac-configured.png"}]
+        live = [{"type": "audio", "rowIndex": 0, "data": {"banners": [{"name": "live.png"}]}}]
+
+        result, captured = self._run_delivery(
+            monkeypatch, db, app, [], tag=_tag(banners=tag_banner), live_creatives=live
+        )
+
+        assert captured["banners"] == tag_banner
+
+    def test_no_banners_anywhere_attaches_with_none(self, client, db, app, monkeypatch):
+        result, captured = self._run_delivery(monkeypatch, db, app, [], live_creatives=[])
+
+        assert captured["banners"] == []

@@ -13,6 +13,11 @@ there. Anything already on the draft is left untouched so it is published
 alongside the generated ad; our creative joins the same row so the ad unit
 rotates between them rather than stacking them sequentially.
 
+Banners: a new draft starts empty, so companion banners someone paired with
+the live audio in Frequency's UI would be lost on every publish. Before
+attaching, DAC reads the live (isCurrent) version from
+GET /flight/application/{appId} and carries its banners onto the new audio.
+
 Authentication: step 1 returns a `sid` session cookie. All subsequent requests
 pass it explicitly via cookies= to avoid requests cookie-jar policy issues.
 """
@@ -32,6 +37,18 @@ from app.models.campaign import (
 )
 
 logger = logging.getLogger(__name__)
+
+AUDIO_CREATIVE_TYPES = (None, "audio")
+FLIGHT_VERSIONS_KEY = "versions"
+VERSION_IS_CURRENT_KEY = "isCurrent"
+VERSION_SOURCE_DRAFT_KEY = "application_draft_id"
+CREATIVE_DATA_KEY = "data"
+CREATIVE_BANNERS_KEY = "banners"
+CREATIVE_ROW_INDEX_KEY = "rowIndex"
+BANNER_SOURCE_TAG = "tag config"
+BANNER_SOURCE_DRAFT = "existing row"
+BANNER_SOURCE_LIVE = "live version"
+BANNER_SOURCE_NONE = "none"
 
 
 class FrequencyDeliveryError(Exception):
@@ -142,11 +159,11 @@ def deliver_ad(ad_run, tag: dict, final_ad_bytes: bytes) -> str:
             logger.info(
                 "[Frequency] Existing creative — name=%s  type=%s  rowIndex=%s  weight=%s  "
                 "banners=%s",
-                existing.get("fileName") or existing.get("name"),
+                existing.get("audioFileName") or existing.get("fileName") or existing.get("name"),
                 existing.get("type"),
-                existing.get("rowIndex"),
+                _row_of(existing),
                 existing.get("fileWeight"),
-                [b.get("name") for b in existing.get("banners") or [] if isinstance(b, dict)],
+                _banner_names(_creative_banners(existing)),
             )
         logger.info(
             "[Frequency] Step 2b OK — %d existing creative(s) will be published alongside "
@@ -182,13 +199,9 @@ def deliver_ad(ad_run, tag: dict, final_ad_bytes: bytes) -> str:
     # --- Step 4: Attach creative to draft ---
     row_index = _row_index_for_new_creative(existing_creatives)
     serve_option = _serve_option_for_new_creative(existing_creatives)
-    tag_banners = tag.get(FREQUENCY_TAG_BANNERS_KEY)
-    if tag_banners:
-        banners = tag_banners
-        banners_source = "tag config"
-    else:
-        banners = _banners_for_row(existing_creatives, row_index)
-        banners_source = "existing row" if banners else "none"
+    banners, banners_source = _choose_banners(
+        tag, existing_creatives, row_index, base_url, app_id, auth_headers, auth_cookies
+    )
     logger.info(
         "[Frequency] Step 4: attach creative — POST %s/application/%s/draft/%s/creative  "
         "rowIndex=%s  serveOption=%s  banners=%s (source: %s)",
@@ -197,7 +210,7 @@ def deliver_ad(ad_run, tag: dict, final_ad_bytes: bytes) -> str:
         draft_id,
         row_index,
         serve_option,
-        [b.get("name") for b in banners if isinstance(b, dict)],
+        _banner_names(banners),
         banners_source,
     )
     _attach_creative(
@@ -337,8 +350,8 @@ def _row_index_for_new_creative(existing_creatives: list) -> int:
     audio_rows = [
         row
         for creative in existing_creatives
-        if creative.get("type") in (None, "audio")
-        for row in (_as_int(creative.get("rowIndex")),)
+        if creative.get("type") in AUDIO_CREATIVE_TYPES
+        for row in (_row_of(creative),)
         if row is not None
     ]
     if audio_rows:
@@ -347,7 +360,7 @@ def _row_index_for_new_creative(existing_creatives: list) -> int:
     used_rows = {
         row
         for creative in existing_creatives
-        for row in (_as_int(creative.get("rowIndex")),)
+        for row in (_row_of(creative),)
         if row is not None
     }
     candidate = 0
@@ -356,30 +369,108 @@ def _row_index_for_new_creative(existing_creatives: list) -> int:
     return candidate
 
 
-def _banners_for_row(existing_creatives: list, row_index: int) -> list:
-    """Fallback: carry forward whatever banner is paired with the row we're joining.
+def _choose_banners(
+    tag: dict, existing_creatives: list, row_index: int,
+    base_url: str, app_id: str, headers: dict, cookies: dict,
+) -> tuple[list, str]:
+    """Pick the banners for the new audio, and say where they came from.
 
-    Only used when the tag has no FREQUENCY_TAG_BANNERS_KEY configured. DAC
-    cannot rely on a freshly created draft actually reflecting what is live —
-    Frequency's own editor seeds a new draft from a specific release id, which
-    DAC's automated flow has no verified way to obtain — so a campaign that
-    needs a banner should configure one on its tag rather than depend on this.
-
-    The CMP API pairs a banner with a specific creative row via a `banners`
-    field on the request that adds the row's audio — it is not a standing
-    association on the ad unit. A fresh attach call that omits it starts that
-    row with no banner, silently dropping a pairing someone set up earlier
-    until they notice and redo it by hand in Frequency's UI. Joining an
-    existing audio row means carrying its banners forward unchanged; a brand
-    new row has nothing to carry.
+    Tag config wins, then the draft's own row, then the live version. The live
+    version is only fetched when the cheaper sources come up empty.
     """
-    for creative in existing_creatives:
-        if _as_int(creative.get("rowIndex")) != row_index:
+    tag_banners = tag.get(FREQUENCY_TAG_BANNERS_KEY)
+    if tag_banners:
+        return tag_banners, BANNER_SOURCE_TAG
+    draft_banners = _banners_for_row(existing_creatives, row_index)
+    if draft_banners:
+        return draft_banners, BANNER_SOURCE_DRAFT
+    live_creatives = _get_live_creatives(base_url, app_id, headers, cookies)
+    live_banners = _banners_for_row(live_creatives, row_index)
+    if live_banners:
+        return live_banners, BANNER_SOURCE_LIVE
+    return [], BANNER_SOURCE_NONE
+
+
+def _banners_for_row(creatives: list, row_index: int) -> list:
+    """Banners paired with the audio in the given row.
+
+    The CMP API pairs a banner with a specific audio row via a `banners` field
+    on the attach request — it is not a standing association on the ad unit.
+    An attach that omits it starts the row with no banner, so joining a row
+    means carrying its banners forward unchanged.
+    """
+    for creative in creatives:
+        if creative.get("type") not in AUDIO_CREATIVE_TYPES:
             continue
-        banners = creative.get("banners")
+        if _row_of(creative) != row_index:
+            continue
+        banners = _creative_banners(creative)
         if banners:
             return banners
     return []
+
+
+def _creative_field(creative: dict, key: str):
+    """Frequency stores row fields under `data`; the attach request sends them top level."""
+    data = creative.get(CREATIVE_DATA_KEY)
+    nested = data.get(key) if isinstance(data, dict) else None
+    return nested if nested is not None else creative.get(key)
+
+
+def _creative_banners(creative: dict) -> list:
+    return _creative_field(creative, CREATIVE_BANNERS_KEY) or []
+
+
+def _row_of(creative: dict):
+    return _as_int(_creative_field(creative, CREATIVE_ROW_INDEX_KEY))
+
+
+def _banner_names(banners: list) -> list:
+    return [b.get("name") for b in banners if isinstance(b, dict)]
+
+
+def _get_live_creatives(base_url: str, app_id: str, headers: dict, cookies: dict) -> list:
+    """Creatives on the ad unit's live version. Never fatal.
+
+    A published version keeps its creatives on the draft it was published
+    from, so they are read through that draft.
+    """
+    draft_id = _live_source_draft_id(base_url, app_id, headers, cookies)
+    if draft_id is None:
+        logger.info("[Frequency] No live version found to carry banners from")
+        return []
+    logger.info("[Frequency] Live version was published from draft %s", draft_id)
+    return _get_draft_creatives(base_url, app_id, draft_id, headers, cookies)
+
+
+def _live_source_draft_id(base_url: str, app_id: str, headers: dict, cookies: dict):
+    url = f"{base_url}/flight/application/{app_id}"
+    try:
+        resp = requests.get(url, headers=headers, cookies=cookies, timeout=30)
+    except requests.RequestException as exc:
+        logger.warning("[Frequency] _live_source_draft_id failed: %s", exc)
+        return None
+
+    logger.info("[Frequency] _live_source_draft_id HTTP %s", resp.status_code)
+    if not resp.ok:
+        logger.warning(
+            "[Frequency] Could not read flight: HTTP %s — %s", resp.status_code, resp.text[:300]
+        )
+        return None
+
+    try:
+        versions = resp.json().get(FLIGHT_VERSIONS_KEY) or []
+    except (ValueError, AttributeError):
+        logger.warning("[Frequency] Flight response was not a JSON object")
+        return None
+    return _current_version_draft_id(versions)
+
+
+def _current_version_draft_id(versions: list):
+    for version in versions:
+        if isinstance(version, dict) and version.get(VERSION_IS_CURRENT_KEY):
+            return version.get(VERSION_SOURCE_DRAFT_KEY)
+    return None
 
 
 def _serve_option_for_new_creative(existing_creatives: list) -> str:
