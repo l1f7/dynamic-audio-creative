@@ -30,12 +30,7 @@ from app.admin.forms import (
 from app.delivery import frequency_token
 from app.extensions import db
 from app.models import AdRun, AdminUser, Advertiser, ApiKey, Campaign, PronunciationEntry
-from app.models.campaign import (
-    FREQUENCY_TAG_APP_ID_KEY,
-    FREQUENCY_TAG_BANNERS_KEY,
-    FREQUENCY_TAG_TOKEN_KEY,
-    PUSH_FEED_TYPE,
-)
+from app.models.campaign import FREQUENCY_TAG_APP_ID_KEY, FREQUENCY_TAG_TOKEN_KEY, PUSH_FEED_TYPE
 
 
 PASSWORD_CHANGE_ENDPOINT = "admin.account_password"
@@ -325,46 +320,10 @@ def advertiser_edit(adv_id):
 
 FREQUENCY_TOKEN_FIELD_PREFIX = "freq_token_"
 FREQUENCY_APP_ID_FIELD_PREFIX = "freq_app_id_"
-FREQUENCY_BANNER_FIELD_PREFIX = "freq_banner_"
-# HTML input suffix -> Frequency's `banners` creative schema key.
-FREQUENCY_BANNER_FIELD_MAP = {
-    "name": "name",
-    "width": "width",
-    "height": "height",
-    "clickout": "clickOut",
-    "alttext": "altText",
-    "fileurl": "fileUrl",
-}
-FREQUENCY_BANNER_INT_FIELDS = ("width", "height")
-FREQUENCY_BANNER_REQUIRED_KEYS = ("name", "width", "height", "fileUrl")
 
 
-def _frequency_banner_rows(form_data, tag_index: int) -> list[dict]:
-    """Raw (unvalidated) field values for one Frequency Tag row's repeatable banner sub-rows.
-
-    Fields are named freq_banner_<tagIndex>_<bannerIndex>_<field>. A sub-row
-    with every field blank is a leftover "+ Add banner" click and is dropped
-    rather than saved as an empty banner.
-    """
-    rows = []
-    j = 0
-    while True:
-        prefix = f"{FREQUENCY_BANNER_FIELD_PREFIX}{tag_index}_{j}_"
-        probe_field = f"{prefix}name"
-        if probe_field not in form_data:
-            break
-        raw = {
-            html_field: form_data.get(f"{prefix}{html_field}", "").strip()
-            for html_field in FREQUENCY_BANNER_FIELD_MAP
-        }
-        if any(raw.values()):
-            rows.append(raw)
-        j += 1
-    return rows
-
-
-def _frequency_tag_rows(form_data) -> list[tuple[str, str, list[dict]]]:
-    """Raw (token, app_id, banner_rows) triples from the repeatable Frequency Tags editor rows."""
+def _frequency_tag_rows(form_data) -> list[tuple[str, str]]:
+    """Raw (token, app_id) pairs from the repeatable Frequency Tags editor rows."""
     rows = []
     i = 0
     while True:
@@ -373,79 +332,34 @@ def _frequency_tag_rows(form_data) -> list[tuple[str, str, list[dict]]]:
             break
         token = form_data.get(token_field, "").strip()
         app_id = form_data.get(f"{FREQUENCY_APP_ID_FIELD_PREFIX}{i}", "").strip()
-        banner_rows = _frequency_banner_rows(form_data, i)
         if token:
-            rows.append((token, app_id, banner_rows))
+            rows.append((token, app_id))
         i += 1
     return rows
 
 
-def _build_frequency_tags(
-    rows: list[tuple[str, str, list[dict]]], client: str | None
-) -> tuple[list[dict], list[str]]:
-    """Decode each pasted token into a stored tag; a malformed token or banner blocks saving.
+def _build_frequency_tags(rows: list[tuple[str, str]], client: str | None) -> tuple[list[dict], list[str]]:
+    """Decode each pasted token into a stored tag; a malformed token blocks saving.
 
     An app_id typed on the row is kept as-is — it is never overwritten by a
     later save. Only a blank app_id is looked up against Frequency, since that
     lookup does not always return one and must not erase a value that already
     works.
-
-    Banners are entered as plain fields (name/width/height/click-out/alt
-    text/file URL) rather than pasted JSON, so nobody has to hand-copy
-    Frequency's schema. DAC ships them with every audio attach for this tag,
-    since a fresh draft cannot be trusted to already carry one forward — see
-    frequency.py's deliver_ad. NOTE: whether Frequency's attach endpoint
-    actually honors a `banners` field has not been confirmed against a real
-    delivery — only that the field is documented in its request schema.
     """
     tags = []
     errors = []
-    for token, app_id, banner_rows in rows:
+    for token, app_id in rows:
         try:
             payload = frequency_token.decode_payload(token)
         except frequency_token.InvalidFrequencyToken as exc:
             errors.append(str(exc))
             continue
-        banners = _build_frequency_banners(banner_rows, errors)
         flash("Frequency token points at: " + _describe_payload(payload), "info")
-        tag = {
+        tags.append({
             FREQUENCY_TAG_TOKEN_KEY: token,
             FREQUENCY_TAG_APP_ID_KEY: app_id or _resolve_frequency_app_id(client, token),
-        }
-        if banners:
-            tag[FREQUENCY_TAG_BANNERS_KEY] = banners
-        tags.append(tag)
+        })
     return tags, errors
-
-
-def _build_frequency_banners(banner_rows: list[dict], errors: list[str]) -> list[dict]:
-    """Validate and convert one tag's raw banner sub-rows into Frequency's schema shape."""
-    banners = []
-    for raw in banner_rows:
-        banner = {}
-        for html_field, json_key in FREQUENCY_BANNER_FIELD_MAP.items():
-            value = raw.get(html_field, "")
-            if not value:
-                continue
-            if html_field in FREQUENCY_BANNER_INT_FIELDS:
-                try:
-                    banner[json_key] = int(value)
-                except ValueError:
-                    errors.append(
-                        f"Banner '{raw.get('name') or '(unnamed)'}': {json_key} must be a whole number."
-                    )
-                    continue
-            else:
-                banner[json_key] = value
-        missing = [key for key in FREQUENCY_BANNER_REQUIRED_KEYS if key not in banner]
-        if missing:
-            errors.append(
-                f"Banner '{banner.get('name') or '(unnamed)'}' is missing required field(s): "
-                + ", ".join(missing)
-            )
-            continue
-        banners.append(banner)
-    return banners
 
 
 def _frequency_client_for(form) -> str | None:

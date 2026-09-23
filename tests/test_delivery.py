@@ -13,11 +13,7 @@ from app.delivery.frequency import (
     is_delivery_available,
 )
 from app.models import Advertiser, Campaign
-from app.models.campaign import (
-    FREQUENCY_TAG_APP_ID_KEY,
-    FREQUENCY_TAG_BANNERS_KEY,
-    FREQUENCY_TAG_TOKEN_KEY,
-)
+from app.models.campaign import FREQUENCY_TAG_APP_ID_KEY, FREQUENCY_TAG_TOKEN_KEY
 
 
 def _make_ad_run(db, **campaign_overrides):
@@ -43,11 +39,8 @@ def _make_ad_run(db, **campaign_overrides):
     return run
 
 
-def _tag(app_id="12345", token="tok", banners=None):
-    tag = {FREQUENCY_TAG_APP_ID_KEY: app_id, FREQUENCY_TAG_TOKEN_KEY: token}
-    if banners is not None:
-        tag[FREQUENCY_TAG_BANNERS_KEY] = banners
-    return tag
+def _tag(app_id="12345", token="tok"):
+    return {FREQUENCY_TAG_APP_ID_KEY: app_id, FREQUENCY_TAG_TOKEN_KEY: token}
 
 
 class TestFrequencyConfigGuards:
@@ -209,8 +202,7 @@ class TestDeliverAdCarriesBannersThroughAttach:
     runs against no real Frequency environment, staging or otherwise.
     """
 
-    def _run_delivery(self, monkeypatch, db, app, existing_creatives, tag=None,
-                      live_creatives=None):
+    def _run_delivery(self, monkeypatch, db, app, existing_creatives, live_creatives=None):
         from app.delivery import frequency
 
         run = _make_ad_run(db)
@@ -246,67 +238,11 @@ class TestDeliverAdCarriesBannersThroughAttach:
         monkeypatch.setattr(frequency, "_attach_creative", fake_attach)
 
         try:
-            result = frequency.deliver_ad(run, tag or _tag(), b"fake-mp3-bytes")
+            result = frequency.deliver_ad(run, _tag(), b"fake-mp3-bytes")
         finally:
             app.config.pop("CMPAPI_BASE_URL")
 
         return result, captured
-
-    def test_banner_paired_with_the_joined_row_is_attached_with_the_new_audio(
-        self, client, db, app, monkeypatch
-    ):
-        banner = [{"name": "companion.png", "width": 300, "height": 250, "fileUrl": "https://x/companion.png"}]
-        existing = [{"type": "audio", "rowIndex": 0, "banners": banner, "serveOption": "random"}]
-
-        result, captured = self._run_delivery(monkeypatch, db, app, existing)
-
-        assert result == "<VAST/>"
-        assert captured["row_index"] == 0
-        assert captured["banners"] == banner
-
-    def test_fresh_row_next_to_a_banner_attaches_with_no_banners(
-        self, client, db, app, monkeypatch
-    ):
-        """A banner sitting at row 0 with no audio yet must not be dragged
-        into the new audio's row — it has nothing to do with this creative."""
-        existing = [{"type": "image", "rowIndex": 0, "banners": [{"name": "unrelated.png"}]}]
-
-        result, captured = self._run_delivery(monkeypatch, db, app, existing)
-
-        assert result == "<VAST/>"
-        assert captured["row_index"] == 1
-        assert captured["banners"] == []
-
-    def test_tag_configured_banners_are_shipped_regardless_of_the_draft(
-        self, client, db, app, monkeypatch
-    ):
-        """DAC ships its own known banner every time rather than trusting a
-        freshly created draft to already carry one forward from Frequency."""
-        tag_banner = [{"name": "dac-configured.png", "width": 300, "height": 250,
-                        "fileUrl": "https://x/dac-configured.png"}]
-        existing = []  # a brand-new draft with nothing on it yet
-
-        result, captured = self._run_delivery(
-            monkeypatch, db, app, existing, tag=_tag(banners=tag_banner)
-        )
-
-        assert result == "<VAST/>"
-        assert captured["banners"] == tag_banner
-
-    def test_tag_configured_banners_override_whatever_the_row_already_has(
-        self, client, db, app, monkeypatch
-    ):
-        row_banner = [{"name": "stale-from-frequency.png"}]
-        tag_banner = [{"name": "dac-configured.png", "width": 300, "height": 250,
-                        "fileUrl": "https://x/dac-configured.png"}]
-        existing = [{"type": "audio", "rowIndex": 0, "banners": row_banner}]
-
-        result, captured = self._run_delivery(
-            monkeypatch, db, app, existing, tag=_tag(banners=tag_banner)
-        )
-
-        assert result == "<VAST/>"
-        assert captured["banners"] == tag_banner
 
     def test_live_version_banners_are_reattached_to_the_new_audio(
         self, client, db, app, monkeypatch
@@ -320,21 +256,22 @@ class TestDeliverAdCarriesBannersThroughAttach:
         result, captured = self._run_delivery(monkeypatch, db, app, [], live_creatives=live)
 
         assert result == "<VAST/>"
+        assert captured["row_index"] == 0
         assert captured["banners"] == live_banner
 
-    def test_tag_configured_banners_override_the_live_version(
+    def test_live_banners_from_a_different_row_are_not_attached(
         self, client, db, app, monkeypatch
     ):
-        tag_banner = [{"name": "dac-configured.png"}]
-        live = [{"type": "audio", "rowIndex": 0, "data": {"banners": [{"name": "live.png"}]}}]
+        existing = [{"type": "image", "rowIndex": 0}]
+        live = [{"type": "audio", "data": {"rowIndex": 0, "banners": [{"name": "row0.png"}]}}]
 
-        result, captured = self._run_delivery(
-            monkeypatch, db, app, [], tag=_tag(banners=tag_banner), live_creatives=live
-        )
+        result, captured = self._run_delivery(monkeypatch, db, app, existing, live_creatives=live)
 
-        assert captured["banners"] == tag_banner
+        assert captured["row_index"] == 1
+        assert captured["banners"] == []
 
-    def test_no_banners_anywhere_attaches_with_none(self, client, db, app, monkeypatch):
+    def test_no_live_banners_attaches_with_none(self, client, db, app, monkeypatch):
         result, captured = self._run_delivery(monkeypatch, db, app, [], live_creatives=[])
 
+        assert result == "<VAST/>"
         assert captured["banners"] == []

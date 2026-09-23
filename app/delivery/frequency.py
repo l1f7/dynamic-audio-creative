@@ -30,11 +30,7 @@ from urllib.parse import quote
 import requests
 from flask import current_app
 
-from app.models.campaign import (
-    FREQUENCY_TAG_APP_ID_KEY,
-    FREQUENCY_TAG_BANNERS_KEY,
-    FREQUENCY_TAG_TOKEN_KEY,
-)
+from app.models.campaign import FREQUENCY_TAG_APP_ID_KEY, FREQUENCY_TAG_TOKEN_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +41,6 @@ VERSION_SOURCE_DRAFT_KEY = "application_draft_id"
 CREATIVE_DATA_KEY = "data"
 CREATIVE_BANNERS_KEY = "banners"
 CREATIVE_ROW_INDEX_KEY = "rowIndex"
-BANNER_SOURCE_TAG = "tag config"
-BANNER_SOURCE_DRAFT = "existing row"
-BANNER_SOURCE_LIVE = "live version"
-BANNER_SOURCE_NONE = "none"
 
 
 class FrequencyDeliveryError(Exception):
@@ -199,19 +191,16 @@ def deliver_ad(ad_run, tag: dict, final_ad_bytes: bytes) -> str:
     # --- Step 4: Attach creative to draft ---
     row_index = _row_index_for_new_creative(existing_creatives)
     serve_option = _serve_option_for_new_creative(existing_creatives)
-    banners, banners_source = _choose_banners(
-        tag, existing_creatives, row_index, base_url, app_id, auth_headers, auth_cookies
-    )
+    banners = _live_banners(base_url, app_id, row_index, auth_headers, auth_cookies)
     logger.info(
         "[Frequency] Step 4: attach creative — POST %s/application/%s/draft/%s/creative  "
-        "rowIndex=%s  serveOption=%s  banners=%s (source: %s)",
+        "rowIndex=%s  serveOption=%s  banners=%s (from live version)",
         base_url,
         app_id,
         draft_id,
         row_index,
         serve_option,
         _banner_names(banners),
-        banners_source,
     )
     _attach_creative(
         base_url,
@@ -369,26 +358,15 @@ def _row_index_for_new_creative(existing_creatives: list) -> int:
     return candidate
 
 
-def _choose_banners(
-    tag: dict, existing_creatives: list, row_index: int,
-    base_url: str, app_id: str, headers: dict, cookies: dict,
-) -> tuple[list, str]:
-    """Pick the banners for the new audio, and say where they came from.
+def _live_banners(
+    base_url: str, app_id: str, row_index: int, headers: dict, cookies: dict
+) -> list:
+    """Banners paired with the live version's audio, so they survive the new publish.
 
-    Tag config wins, then the draft's own row, then the live version. The live
-    version is only fetched when the cheaper sources come up empty.
+    Banners are managed in Frequency's UI; DAC only carries them forward.
     """
-    tag_banners = tag.get(FREQUENCY_TAG_BANNERS_KEY)
-    if tag_banners:
-        return tag_banners, BANNER_SOURCE_TAG
-    draft_banners = _banners_for_row(existing_creatives, row_index)
-    if draft_banners:
-        return draft_banners, BANNER_SOURCE_DRAFT
     live_creatives = _get_live_creatives(base_url, app_id, headers, cookies)
-    live_banners = _banners_for_row(live_creatives, row_index)
-    if live_banners:
-        return live_banners, BANNER_SOURCE_LIVE
-    return [], BANNER_SOURCE_NONE
+    return _banners_for_row(live_creatives, row_index)
 
 
 def _banners_for_row(creatives: list, row_index: int) -> list:

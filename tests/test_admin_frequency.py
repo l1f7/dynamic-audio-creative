@@ -32,9 +32,7 @@ def advertiser(db):
     return adv
 
 
-def _campaign_form_data(advertiser, tokens=(), app_ids=(), banners=(), **overrides):
-    """`banners` is a list (per Frequency Tag row) of lists (per banner sub-row)
-    of {html_field: value} dicts, e.g. [[{"name": "x", "width": "300", ...}]]."""
+def _campaign_form_data(advertiser, tokens=(), app_ids=(), **overrides):
     data = {
         "name": "Spring", "advertiser_id": advertiser.id, "is_active": "y",
         "feed_type": "weather", "intro_seconds": 2.0, "outro_seconds": 2.0,
@@ -42,16 +40,12 @@ def _campaign_form_data(advertiser, tokens=(), app_ids=(), banners=(), **overrid
     }
     data.update({f"freq_token_{i}": token for i, token in enumerate(tokens)})
     data.update({f"freq_app_id_{i}": app_id for i, app_id in enumerate(app_ids)})
-    for tag_idx, banner_rows in enumerate(banners):
-        for banner_idx, fields in enumerate(banner_rows):
-            for html_field, value in fields.items():
-                data[f"freq_banner_{tag_idx}_{banner_idx}_{html_field}"] = value
     data.update(overrides)
     return data
 
 
-def _post_campaign(client, advertiser, tokens=(), app_ids=(), banners=(), **overrides):
-    data = _campaign_form_data(advertiser, tokens=tokens, app_ids=app_ids, banners=banners, **overrides)
+def _post_campaign(client, advertiser, tokens=(), app_ids=(), **overrides):
+    data = _campaign_form_data(advertiser, tokens=tokens, app_ids=app_ids, **overrides)
     return client.post("/admin/campaigns/new", data=data, follow_redirects=True)
 
 
@@ -184,74 +178,3 @@ class TestTagsOnSave:
         )
 
         assert Campaign.query.one().frequency_tags == [{"token": VALID_TOKEN, "app_id": 77}]
-
-
-class TestBannersOnSave:
-    """DAC ships a tag's configured companion banner(s) with every audio push,
-    since a fresh Frequency draft cannot be trusted to already carry one
-    forward — see app.delivery.frequency.deliver_ad. Banners are entered as
-    plain fields (freq_banner_<tagIdx>_<bannerIdx>_<field>) rather than pasted
-    JSON, so nobody has to hand-copy Frequency's schema."""
-
-    VALID_BANNER = {
-        "name": "companion.png", "width": "300", "height": "250",
-        "fileurl": "https://x/companion.png", "clickout": "https://x", "alttext": "click here",
-    }
-
-    def test_valid_banner_fields_are_stored(self, authenticated_client, db, app, monkeypatch, advertiser):
-        monkeypatch.setitem(app.config, "CMPAPI_BASE_URL", None)
-        _post_campaign(authenticated_client, advertiser, tokens=[VALID_TOKEN], banners=[[self.VALID_BANNER]])
-
-        tags = Campaign.query.one().frequency_tags
-        assert tags[0]["banners"] == [{
-            "name": "companion.png", "width": 300, "height": 250,
-            "fileUrl": "https://x/companion.png", "clickOut": "https://x", "altText": "click here",
-        }]
-
-    def test_two_banners_on_one_tag_are_both_stored(self, authenticated_client, db, app, monkeypatch, advertiser):
-        monkeypatch.setitem(app.config, "CMPAPI_BASE_URL", None)
-        second = dict(self.VALID_BANNER, name="second.png", fileurl="https://x/second.png")
-        _post_campaign(authenticated_client, advertiser, tokens=[VALID_TOKEN], banners=[[self.VALID_BANNER, second]])
-
-        tags = Campaign.query.one().frequency_tags
-        assert [b["name"] for b in tags[0]["banners"]] == ["companion.png", "second.png"]
-
-    def test_blank_banner_row_stores_no_banners_key(self, authenticated_client, db, app, monkeypatch, advertiser):
-        monkeypatch.setitem(app.config, "CMPAPI_BASE_URL", None)
-        blank = {k: "" for k in self.VALID_BANNER}
-        _post_campaign(authenticated_client, advertiser, tokens=[VALID_TOKEN], banners=[[blank]])
-
-        tags = Campaign.query.one().frequency_tags
-        assert "banners" not in tags[0]
-
-    def test_banner_missing_a_required_field_blocks_the_whole_save(
-        self, authenticated_client, db, app, monkeypatch, advertiser
-    ):
-        monkeypatch.setitem(app.config, "CMPAPI_BASE_URL", None)
-        incomplete = dict(self.VALID_BANNER)
-        del incomplete["fileurl"]
-        resp = _post_campaign(authenticated_client, advertiser, tokens=[VALID_TOKEN], banners=[[incomplete]])
-
-        assert b"missing required field" in resp.data
-        assert Campaign.query.count() == 0
-
-    def test_non_numeric_width_blocks_the_whole_save(self, authenticated_client, db, app, monkeypatch, advertiser):
-        monkeypatch.setitem(app.config, "CMPAPI_BASE_URL", None)
-        bad = dict(self.VALID_BANNER, width="wide")
-        resp = _post_campaign(authenticated_client, advertiser, tokens=[VALID_TOKEN], banners=[[bad]])
-
-        assert b"must be a whole number" in resp.data
-        assert Campaign.query.count() == 0
-
-    def test_edit_page_prefills_the_saved_banners(self, authenticated_client, db, advertiser):
-        camp = Campaign(
-            name="Spring", advertiser_id=advertiser.id, feed_type="weather",
-            frequency_tags=[{"token": VALID_TOKEN, "app_id": None,
-                              "banners": [{"name": "companion.png", "width": 300, "height": 250,
-                                           "fileUrl": "https://x/companion.png"}]}],
-        )
-        db.session.add(camp)
-        db.session.commit()
-        resp = authenticated_client.get(f"/admin/campaigns/{camp.id}/edit")
-        assert b"companion.png" in resp.data
-        assert b"https://x/companion.png" in resp.data

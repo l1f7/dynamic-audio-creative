@@ -287,23 +287,6 @@
                             {% if summary %}
                             <small class="text-muted d-block">{% for label, value in summary %}{{ label }} {{ value }}{% if not loop.last %}, {% endif %}{% endfor %}</small>
                             {% endif %}
-                            <div class="mt-2 ps-3 border-start">
-                                <small class="text-muted d-block mb-1">Companion banner(s) — DAC ships these with every audio push for this ad unit, since Frequency does not reliably keep one attached on its own.</small>
-                                <div class="freq-banner-rows">
-                                    {% for banner in tag.banners or [] %}
-                                    <div class="d-flex flex-wrap gap-1 mb-1 align-items-center freq-banner-row">
-                                        <input type="text" name="freq_banner_{{ tag_idx }}_{{ loop.index0 }}_name" class="form-control form-control-sm" style="max-width: 9rem;" placeholder="Name" data-banner-field="name" value="{{ banner.name or '' }}">
-                                        <input type="number" name="freq_banner_{{ tag_idx }}_{{ loop.index0 }}_width" class="form-control form-control-sm" style="max-width: 5.5rem;" placeholder="Width" data-banner-field="width" value="{{ banner.width or '' }}">
-                                        <input type="number" name="freq_banner_{{ tag_idx }}_{{ loop.index0 }}_height" class="form-control form-control-sm" style="max-width: 5.5rem;" placeholder="Height" data-banner-field="height" value="{{ banner.height or '' }}">
-                                        <input type="text" name="freq_banner_{{ tag_idx }}_{{ loop.index0 }}_fileurl" class="form-control form-control-sm" style="max-width: 15rem;" placeholder="File URL" data-banner-field="fileurl" value="{{ banner.fileUrl or '' }}">
-                                        <input type="text" name="freq_banner_{{ tag_idx }}_{{ loop.index0 }}_clickout" class="form-control form-control-sm" style="max-width: 12rem;" placeholder="Click-out URL" data-banner-field="clickout" value="{{ banner.clickOut or '' }}">
-                                        <input type="text" name="freq_banner_{{ tag_idx }}_{{ loop.index0 }}_alttext" class="form-control form-control-sm" style="max-width: 9rem;" placeholder="Alt text" data-banner-field="alttext" value="{{ banner.altText or '' }}">
-                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.freq-banner-row').remove(); _renumberFreqTags()">Remove</button>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addFreqBanner(this)">+ Add banner</button>
-                            </div>
                         </div>
                         {% endfor %}
                     {% endif %}
@@ -365,34 +348,7 @@ function _renumberFreqTags() {
     document.querySelectorAll('#freq-tag-rows .freq-tag-row').forEach(function(row, i) {
         row.querySelector('textarea').name = 'freq_token_' + i;
         row.querySelector('.freq-app-id-input').name = 'freq_app_id_' + i;
-        row.querySelectorAll('.freq-banner-row').forEach(function(brow, j) {
-            brow.querySelectorAll('[data-banner-field]').forEach(function(input) {
-                input.name = 'freq_banner_' + i + '_' + j + '_' + input.dataset.bannerField;
-            });
-        });
     });
-}
-
-function _freqBannerRowHtml() {
-    return `
-        <input type="text" class="form-control form-control-sm" style="max-width: 9rem;" placeholder="Name" data-banner-field="name">
-        <input type="number" class="form-control form-control-sm" style="max-width: 5.5rem;" placeholder="Width" data-banner-field="width">
-        <input type="number" class="form-control form-control-sm" style="max-width: 5.5rem;" placeholder="Height" data-banner-field="height">
-        <input type="text" class="form-control form-control-sm" style="max-width: 15rem;" placeholder="File URL" data-banner-field="fileurl">
-        <input type="text" class="form-control form-control-sm" style="max-width: 12rem;" placeholder="Click-out URL" data-banner-field="clickout">
-        <input type="text" class="form-control form-control-sm" style="max-width: 9rem;" placeholder="Alt text" data-banner-field="alttext">
-        <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.freq-banner-row').remove(); _renumberFreqTags()">Remove</button>
-    `;
-}
-
-function addFreqBanner(button) {
-    const container = button.previousElementSibling;
-    const row = document.createElement('div');
-    row.className = 'd-flex flex-wrap gap-1 mb-1 align-items-center freq-banner-row';
-    row.innerHTML = _freqBannerRowHtml();
-    container.appendChild(row);
-    _renumberFreqTags();
-    row.querySelector('input').focus();
 }
 
 document.getElementById('add-freq-tag').addEventListener('click', function() {
@@ -405,11 +361,6 @@ document.getElementById('add-freq-tag').addEventListener('click', function() {
             <textarea name="freq_token_${idx}" class="form-control form-control-sm font-monospace me-2" rows="2" placeholder="Paste Frequency JWT token here…"></textarea>
             <input type="text" name="freq_app_id_${idx}" class="form-control form-control-sm me-2 freq-app-id-input" style="max-width: 10rem;" placeholder="App ID">
             <button type="button" class="btn btn-sm btn-outline-danger align-self-start" onclick="this.closest('.freq-tag-row').remove(); _renumberFreqTags()">Remove</button>
-        </div>
-        <div class="mt-2 ps-3 border-start">
-            <small class="text-muted d-block mb-1">Companion banner(s) — DAC ships these with every audio push for this ad unit, since Frequency does not reliably keep one attached on its own.</small>
-            <div class="freq-banner-rows"></div>
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addFreqBanner(this)">+ Add banner</button>
         </div>
     `;
     container.appendChild(row);
